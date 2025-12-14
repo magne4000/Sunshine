@@ -304,6 +304,8 @@ namespace platf {
     // Use KMS capture to grab from the virtual display
     // The virtual display should now appear as a DRM device that can be captured
 #ifdef SUNSHINE_BUILD_DRM
+    extern std::shared_ptr<display_t> kms_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
+    
     BOOST_LOG(info) << "Using KMS to capture from EVDI virtual display"sv;
     
     // When EVDI is active, we want to use the virtual display by default
