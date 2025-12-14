@@ -2,8 +2,8 @@
   "name": "evdi",
   "buildsystem": "simple",
   "build-commands": [
-    "cd library && make",
-    "cd library && make install DESTDIR=/ PREFIX=/app"
+    "make -C library",
+    "make -C library install DESTDIR=/ PREFIX=/app"
   ],
   "sources": [
     {

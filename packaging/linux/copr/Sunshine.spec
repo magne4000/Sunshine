@@ -47,8 +47,9 @@ BuildRequires: systemd-rpm-macros
 BuildRequires: wget
 BuildRequires: which
 
-# EVDI is available in some repos - if not available, build will proceed without it
-# Use %{?_with_evdi} to optionally enable
+# EVDI virtual display support - optional
+# Enable with: rpmbuild --with evdi
+# Note: libevdi-devel may not be available in all repositories
 %if 0%{?_with_evdi}
 BuildRequires: libevdi-devel
 %endif
