@@ -62,7 +62,7 @@ checkdepends=(
 
 optdepends=(
   'libva-mesa-driver: AMD GPU encoding support'
-  'evdi: EVDI virtual display support'
+  'evdi-dkms: EVDI virtual display kernel module (required for EVDI virtual display support)'
 )
 
 provides=()
@@ -86,11 +86,8 @@ if [[ "${_use_evdi::1}" == "d" ]] && pacman -Qi evdi &> /dev/null; then
   _use_evdi=true
 fi
 
-if [[ "${_use_evdi::1}" == "t" ]]; then
-  makedepends+=(
-    'evdi'
-  )
-fi
+# Note: evdi library is built from source in CI before makepkg runs
+# It is not added to makedepends to avoid dependency on AUR packages
 
 if [[ "${_support_headless_testing::1}" == "t" ]]; then
   optdepends+=(
