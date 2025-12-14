@@ -2015,11 +2015,19 @@ editing the `conf` file in a text editor. Use the examples as reference.
             @endcode</td>
     </tr>
     <tr>
-        <td rowspan="6">Choices</td>
+        <td rowspan="7">Choices</td>
         <td>nvfbc</td>
         <td>Use NVIDIA Frame Buffer Capture to capture direct to GPU memory. This is usually the fastest method for
             NVIDIA cards. NvFBC does not have native Wayland support and does not work with XWayland.
             @note{Applies to Linux only.}</td>
+    </tr>
+    <tr>
+        <td>evdi</td>
+        <td>Create and capture from an EVDI virtual display. The virtual display is created when streaming starts
+            and matches the client's requested resolution, refresh rate, and HDR settings. Requires the EVDI kernel
+            module and libevdi to be installed.
+            @note{Applies to Linux only.}
+            @see{https://github.com/DisplayLink/evdi}</td>
     </tr>
     <tr>
         <td>wlr</td>
