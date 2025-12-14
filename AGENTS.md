@@ -8,7 +8,7 @@
 - **Type**: C++/JavaScript multi-platform application (FreeBSD, Linux, macOS, Windows)
 - **Size**: ~60 C++ source files, comprehensive web UI built with Vue.js and Vite
 - **Languages**: C++ (23), JavaScript/TypeScript (Vue.js), Python (scripts), CMake
-- **Frameworks**: Boost (filesystem, locale, log, program_options), Vue.js 3, Vite 6
+- **Frameworks**: Boost (filesystem, locale, log, program_options), Vue.js 3, Vite 6.x
 - **Test Framework**: Google Test (gtest)
 - **Build System**: CMake 3.25+ with Ninja generator
 - **CI/CD**: GitHub Actions with multi-platform builds
@@ -34,10 +34,13 @@ git submodule update --init --recursive
 - Node.js/npm (for web UI)
 
 ### Build Directory Naming Convention
-**IMPORTANT**: Build directories MUST be prefixed with `cmake-build-` to be properly ignored by git. Examples:
+**IMPORTANT**: Build directories MUST be prefixed with `cmake-` to be properly ignored by git. Examples:
 - `cmake-build-debug`
 - `cmake-build-release`
-- `cmake-build-test`
+- `cmake-debug`
+- `cmake-release`
+
+The `.gitignore` pattern is `cmake-*/` which matches any directory starting with `cmake-`.
 
 ## Build Process (Validated Commands)
 
@@ -270,7 +273,7 @@ Usage in CI:
 
 ### Issue: Build Directory Committed to Git
 **Symptom**: Build artifacts appear in git status  
-**Solution**: Build directories MUST start with `cmake-build-` (e.g., `cmake-build-debug`). This is in `.gitignore`. Use `git rm -r --cached <dir>` to remove if committed.
+**Solution**: Build directories MUST start with `cmake-` (e.g., `cmake-build-debug`, `cmake-release`). This is in `.gitignore`. Use `git rm -r --cached <dir>` to remove if committed.
 
 ## Testing Strategy
 
