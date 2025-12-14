@@ -64,26 +64,44 @@ jobs:
             xorg-server-xvfb
           pacman -Scc --noconfirm
 
-      - name: Install EVDI from AUR
+      - name: Install EVDI library from source
         shell: bash
         run: |
-          # Install evdi from AUR as builder user
-          # First install dependencies
+          # Install build dependencies
           pacman -S --needed --noconfirm libdrm
           
           # Create a build directory in builder's home
-          mkdir -p /home/builder/aur-build
-          chown -R builder:builder /home/builder/aur-build
+          mkdir -p /home/builder/evdi-build
+          chown -R builder:builder /home/builder/evdi-build
           
-          # Clone and build evdi as builder user
-          cd /home/builder/aur-build
-          sudo -u builder git clone https://aur.archlinux.org/evdi.git
+          # Clone evdi from official DisplayLink repository
+          cd /home/builder/evdi-build
+          sudo -u builder git clone https://github.com/DisplayLink/evdi.git
           cd evdi
-          sudo -u builder makepkg -si --noconfirm
+          
+          # Build and install the library (not the kernel module, just the library)
+          cd library
+          sudo -u builder make
+          make install
+          
+          # Create pkg-config file for cmake to find evdi
+          mkdir -p /usr/lib/pkgconfig
+          cat > /usr/lib/pkgconfig/evdi.pc << 'EVDI_PC_EOF'
+          prefix=/usr/local
+          exec_prefix=${prefix}
+          libdir=${exec_prefix}/lib
+          includedir=${prefix}/include
+          
+          Name: evdi
+          Description: Extensible Virtual Display Interface
+          Version: 1.14.7
+          Libs: -L${libdir} -levdi
+          Cflags: -I${includedir}
+          EVDI_PC_EOF
           
           # Clean up
           cd /
-          rm -rf /home/builder/aur-build
+          rm -rf /home/builder/evdi-build
 
       - name: Checkout
         uses: actions/checkout@v6
