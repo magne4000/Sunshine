@@ -27,7 +27,6 @@ namespace platf {
     // Global state for virtual display management
     struct evdi_state_t {
       evdi_handle handle = EVDI_INVALID_HANDLE;
-      int device_id = -1;
       bool is_active = false;
       int width = 1920;
       int height = 1080;
@@ -149,7 +148,7 @@ namespace platf {
 
     // Check if we have an active virtual display
     if (evdi_state.is_active) {
-      BOOST_LOG(debug) << "EVDI: Virtual display is currently active (device /dev/dri/card"sv << evdi_state.device_id << ")"sv;
+      BOOST_LOG(debug) << "EVDI: Virtual display is currently active"sv;
     }
     else {
       BOOST_LOG(debug) << "EVDI: Virtual display will be created on-demand when needed"sv;
@@ -198,10 +197,9 @@ namespace platf {
       return false;
     }
     
-    // Extract the device index from the handle (for logging)
-    evdi_state.device_id = evdi_state.handle->device_index;
-    BOOST_LOG(info) << "EVDI: Opened device /dev/dri/card"sv << evdi_state.device_id;
-    BOOST_LOG(debug) << "EVDI: Device handle: "sv << (void*)evdi_state.handle << ", device_id: "sv << evdi_state.device_id;
+    // Successfully opened EVDI device
+    BOOST_LOG(info) << "EVDI: Opened EVDI virtual display device"sv;
+    BOOST_LOG(debug) << "EVDI: Device handle: "sv << (void*)evdi_state.handle;
 
     // Configure display parameters from client config
     evdi_state.width = config.width;
@@ -244,8 +242,7 @@ namespace platf {
     BOOST_LOG(info) << "EVDI: Virtual display created successfully"sv;
     BOOST_LOG(debug) << "EVDI: Display state - width="sv << evdi_state.width 
                      << ", height="sv << evdi_state.height 
-                     << ", refresh_rate="sv << evdi_state.refresh_rate
-                     << ", device_id="sv << evdi_state.device_id;
+                     << ", refresh_rate="sv << evdi_state.refresh_rate;
     return true;
   }
 
@@ -255,7 +252,7 @@ namespace platf {
       return;
     }
 
-    BOOST_LOG(info) << "EVDI: Destroying virtual display (device /dev/dri/card"sv << evdi_state.device_id << ")"sv;
+    BOOST_LOG(info) << "EVDI: Destroying virtual display"sv;
 
     if (evdi_state.handle != EVDI_INVALID_HANDLE) {
       BOOST_LOG(debug) << "EVDI: Disconnecting and closing device handle"sv;
@@ -264,7 +261,6 @@ namespace platf {
       evdi_state.handle = EVDI_INVALID_HANDLE;
     }
 
-    evdi_state.device_id = -1;
     evdi_state.is_active = false;
 
     BOOST_LOG(info) << "EVDI: Virtual display destroyed"sv;
