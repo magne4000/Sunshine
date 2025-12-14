@@ -88,8 +88,17 @@ jobs:
           # Ensure header is in the correct location
           cp -f evdi_lib.h /usr/include/
           
+          # Ensure library is in the correct location (evdi makefile might put it elsewhere)
+          if [ -f /usr/local/lib/libevdi.so ]; then
+            cp -f /usr/local/lib/libevdi.so* /usr/lib/ || true
+          fi
+          
           # Update library cache
           ldconfig
+          
+          # Verify installation
+          ls -la /usr/lib/libevdi.so* || echo "Warning: libevdi.so not found in /usr/lib"
+          ls -la /usr/include/evdi_lib.h || echo "Warning: evdi_lib.h not found in /usr/include"
           
           # Create pkg-config file for cmake to find evdi
           mkdir -p /usr/lib/pkgconfig
@@ -105,6 +114,12 @@ jobs:
           Libs: -L${libdir} -levdi
           Cflags: -I${includedir}
           EVDI_PC_EOF
+          
+          # Verify pkg-config works
+          pkg-config --exists evdi && echo "pkg-config: evdi found" || echo "pkg-config: evdi NOT found"
+          pkg-config --modversion evdi || true
+          pkg-config --libs evdi || true
+          pkg-config --cflags evdi || true
           
           # Clean up
           cd /
