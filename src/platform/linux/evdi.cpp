@@ -305,12 +305,38 @@ namespace platf {
     // The virtual display should now appear as a DRM device that can be captured
 #ifdef SUNSHINE_BUILD_DRM
     extern std::shared_ptr<display_t> kms_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
+    extern std::vector<std::string> kms_display_names(mem_type_e hwdevice_type);
     
     BOOST_LOG(info) << "Using KMS to capture from EVDI virtual display"sv;
     
-    // If no specific display_name is provided, EVDI virtual display will be used automatically
-    // Otherwise, use the specified display (which could be the EVDI display if user configured it)
-    return kms_display(hwdevice_type, display_name, config);
+    // When EVDI is active, we want to use the virtual display by default
+    // The EVDI virtual display appears as a VIRTUAL connector in KMS
+    // We need to find it and use it, superseding any configured output_name
+    std::string evdi_display_name = display_name;
+    
+    if (evdi_state.is_active) {
+      // Try to find the EVDI/VIRTUAL display in the KMS display list
+      auto kms_displays = kms_display_names(hwdevice_type);
+      
+      // The EVDI display should be the most recently added display
+      // Since we just created it, it should be the last one in the list
+      if (!kms_displays.empty()) {
+        // Use the last display (most recently added) as the EVDI display
+        evdi_display_name = kms_displays.back();
+        BOOST_LOG(info) << "Using EVDI virtual display (KMS id: "sv << evdi_display_name << ")"sv;
+        
+        // If user specified a display_name, log that we're overriding it
+        if (!display_name.empty() && display_name != evdi_display_name) {
+          BOOST_LOG(info) << "Overriding configured Display Id ("sv << display_name 
+                         << ") with EVDI virtual display ("sv << evdi_display_name << ")"sv;
+        }
+      }
+      else {
+        BOOST_LOG(warning) << "Could not find EVDI virtual display in KMS list"sv;
+      }
+    }
+    
+    return kms_display(hwdevice_type, evdi_display_name, config);
 #else
     BOOST_LOG(error) << "EVDI requires KMS/DRM support to be enabled"sv;
     return nullptr;
