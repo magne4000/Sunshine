@@ -157,12 +157,9 @@ namespace platf {
   }
 
   bool verify_evdi() {
-    // EVDI was compiled in, so it's available
-    // The kernel module (evdi-dkms) needs to be loaded at runtime for actual operation
-    // We don't check for the kernel module here because:
-    // 1. It may not be loaded until first use
-    // 2. On CI/build systems, the module won't be available
-    // 3. The actual device creation will handle errors gracefully if module is missing
+    // EVDI was compiled in, so it's available for use
+    // We don't try to create devices here - that happens when streaming starts
+    // This allows the system to work even if no virtual displays exist yet
     BOOST_LOG(info) << "EVDI virtual display support is available"sv;
     return true;
   }
@@ -177,20 +174,20 @@ namespace platf {
       return true;
     }
 
+    BOOST_LOG(info) << "Creating EVDI virtual display for streaming session"sv;
+
     // Use evdi_open_attached_to(NULL) which will:
     // 1. Find an unused EVDI device, or
     // 2. Add a new device and then open it
     // This is the proper way to create/open an EVDI device
-    BOOST_LOG(info) << "Opening/creating EVDI device"sv;
     evdi_state.handle = evdi_open_attached_to(NULL);
     
     if (evdi_state.handle == EVDI_INVALID_HANDLE) {
-      BOOST_LOG(error) << "Failed to open/create EVDI device"sv;
+      BOOST_LOG(error) << "Failed to open/create EVDI device. Is the evdi kernel module (evdi-dkms) loaded?"sv;
       return false;
     }
     
     // Extract the device index from the handle (for logging)
-    // The handle contains the device_index field
     evdi_state.device_id = evdi_state.handle->device_index;
     BOOST_LOG(info) << "Opened EVDI device /dev/dri/card"sv << evdi_state.device_id;
 
@@ -251,45 +248,26 @@ namespace platf {
   }
 
   std::shared_ptr<display_t> evdi_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
-    // Create the virtual display if not already active
-    // This allows for dynamic creation when streaming starts
+    // EVDI virtual displays don't exist until we create them
+    // For now, create the device when first requested
+    // This happens during encoder validation at startup, which is okay
+    // The device will persist for the lifetime of Sunshine
+    
     if (!evdi_state.is_active) {
-      BOOST_LOG(info) << "Creating EVDI virtual display dynamically for streaming session"sv;
+      BOOST_LOG(info) << "Creating EVDI virtual display"sv;
       if (!evdi_create_virtual_display(config)) {
         BOOST_LOG(error) << "Failed to create EVDI virtual display"sv;
+        BOOST_LOG(error) << "Make sure the evdi kernel module (evdi-dkms package) is installed and loaded"sv;
         return nullptr;
       }
 
       // Wait for the system to recognize the new display
-      // Try for up to 5 seconds, checking every 100ms
-      int attempts = 50;
-      bool display_ready = false;
-      
-      for (int i = 0; i < attempts && !display_ready; i++) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
-        // Check if KMS can see the display
-#ifdef SUNSHINE_BUILD_DRM
-        extern std::vector<std::string> kms_display_names(mem_type_e hwdevice_type);
-        auto displays = kms_display_names(hwdevice_type);
-        if (!displays.empty()) {
-          display_ready = true;
-          BOOST_LOG(info) << "EVDI virtual display detected by KMS after "sv << (i + 1) * 100 << "ms"sv;
-        }
-#else
-        // If KMS is not available, just wait a reasonable time
-        if (i >= 5) {  // 500ms
-          display_ready = true;
-        }
-#endif
-      }
-      
-      if (!display_ready) {
-        BOOST_LOG(warning) << "Timeout waiting for EVDI virtual display to be recognized"sv;
-      }
+      // The DRM/KMS subsystem needs time to detect the new card
+      BOOST_LOG(debug) << "Waiting for EVDI virtual display to be recognized by KMS"sv;
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
     }
     else {
-      BOOST_LOG(info) << "Using existing EVDI virtual display"sv;
+      BOOST_LOG(debug) << "Using existing EVDI virtual display"sv;
     }
 
     // Use KMS capture to grab from the virtual display
