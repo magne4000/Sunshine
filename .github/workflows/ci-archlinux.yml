@@ -64,6 +64,21 @@ jobs:
             xorg-server-xvfb
           pacman -Scc --noconfirm
 
+      - name: Install EVDI from AUR
+        shell: bash
+        run: |
+          # Install evdi from AUR as builder user
+          # First install dependencies
+          pacman -S --needed --noconfirm libdrm
+          
+          # Clone and build evdi
+          cd /tmp
+          sudo -u builder git clone https://aur.archlinux.org/evdi.git
+          cd evdi
+          sudo -u builder makepkg -si --noconfirm
+          cd /
+          rm -rf /tmp/evdi
+
       - name: Checkout
         uses: actions/checkout@v6
 
@@ -133,12 +148,14 @@ jobs:
 
           # Export PKGBUILD options so they're available to makepkg
           export _use_cuda="${_use_cuda}"
+          export _use_evdi="true"
           export _run_unit_tests="${_run_unit_tests}"
           export _support_headless_testing="${_support_headless_testing}"
 
           # Build the package as builder user (pass through environment variables)
           sudo -u builder env \
             _use_cuda="${_use_cuda}" \
+            _use_evdi="true" \
             _run_unit_tests="${_run_unit_tests}" \
             _support_headless_testing="${_support_headless_testing}" \
             makepkg -si --noconfirm

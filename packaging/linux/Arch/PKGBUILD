@@ -5,6 +5,7 @@
 : "${_run_unit_tests:=false}"  # if set to true; unit tests will be executed post build; useful in CI
 : "${_support_headless_testing:=false}"
 : "${_use_cuda:=detect}" # nvenc
+: "${_use_evdi:=detect}" # evdi virtual display
 
 : "${_commit:=@GITHUB_COMMIT@}"
 
@@ -78,6 +79,16 @@ fi
 if [[ "${_use_cuda::1}" == "t" ]]; then
   optdepends+=(
     'cuda: Nvidia GPU encoding support'
+  )
+fi
+
+if [[ "${_use_evdi::1}" == "d" ]] && pacman -Qi evdi &> /dev/null; then
+  _use_evdi=true
+fi
+
+if [[ "${_use_evdi::1}" == "t" ]]; then
+  makedepends+=(
+    'evdi'
   )
 fi
 
