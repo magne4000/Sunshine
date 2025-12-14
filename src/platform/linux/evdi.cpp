@@ -195,12 +195,18 @@ namespace platf {
       return false;
     }
 
-    // Open the device
-    evdi_state.handle = evdi_open(evdi_state.device_id);
+    // Construct the device path
+    std::string device_path = "/dev/dri/card" + std::to_string(evdi_state.device_id);
+    
+    // Open the device using the device path
+    evdi_state.handle = evdi_open(device_path.c_str());
     if (evdi_state.handle == EVDI_INVALID_HANDLE) {
-      BOOST_LOG(error) << "Failed to open EVDI device "sv << evdi_state.device_id;
+      BOOST_LOG(error) << "Failed to open EVDI device at "sv << device_path 
+                       << " (device_id: "sv << evdi_state.device_id << ")"sv;
       return false;
     }
+    
+    BOOST_LOG(debug) << "Opened EVDI device at "sv << device_path;
 
     // Configure display parameters from client config
     evdi_state.width = config.width;
