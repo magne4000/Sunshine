@@ -61,6 +61,7 @@ checkdepends=(
 
 optdepends=(
   'libva-mesa-driver: AMD GPU encoding support'
+  'evdi: EVDI virtual display support'
 )
 
 provides=()

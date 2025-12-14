@@ -1,0 +1,27 @@
+{
+  "name": "evdi",
+  "buildsystem": "simple",
+  "build-commands": [
+    "cd library && make",
+    "cd library && make install DESTDIR=/ PREFIX=/app"
+  ],
+  "sources": [
+    {
+      "type": "git",
+      "url": "https://github.com/DisplayLink/evdi.git",
+      "commit": "96d7493e35a227e64c2b8475cd5a5d15d1c1cd7e",
+      "tag": "v1.14.7",
+      "x-checker-data": {
+        "type": "json",
+        "url": "https://api.github.com/repos/DisplayLink/evdi/releases/latest",
+        "tag-query": ".tag_name",
+        "version-query": "$tag | sub(\"^v\"; \"\")",
+        "timestamp-query": ".published_at"
+      }
+    }
+  ],
+  "cleanup": [
+    "/include",
+    "/lib/pkgconfig"
+  ]
+}

@@ -39,6 +39,7 @@ modules:
   - shared-modules/libayatana-appindicator/libayatana-appindicator-gtk3.json
   - "modules/avahi.json"
   - "modules/boost.json"
+  - "modules/evdi.json"
   - "modules/libevdev.json"
   - "modules/libnotify.json"
   - "modules/miniupnpc.json"
@@ -73,6 +74,7 @@ modules:
       - -DSUNSHINE_ENABLE_WAYLAND=ON
       - -DSUNSHINE_ENABLE_X11=ON
       - -DSUNSHINE_ENABLE_DRM=ON
+      - -DSUNSHINE_ENABLE_EVDI=ON
       - -DSUNSHINE_ENABLE_CUDA=ON
       - -DSUNSHINE_PUBLISHER_NAME='LizardByte'
       - -DSUNSHINE_PUBLISHER_WEBSITE='https://app.lizardbyte.dev'
