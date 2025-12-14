@@ -102,6 +102,23 @@ if(LIBDRM_FOUND AND LIBCAP_FOUND)
     list(APPEND SUNSHINE_DEFINITIONS EGL_NO_X11=1)
 endif()
 
+# evdi (virtual display support)
+if(${SUNSHINE_ENABLE_EVDI})
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(EVDI evdi)
+    if(EVDI_FOUND)
+        add_compile_definitions(SUNSHINE_BUILD_EVDI)
+        include_directories(SYSTEM ${EVDI_INCLUDE_DIRS})
+        list(APPEND PLATFORM_LIBRARIES ${EVDI_LIBRARIES})
+        list(APPEND PLATFORM_TARGET_FILES
+                "${CMAKE_SOURCE_DIR}/src/platform/linux/evdi.h"
+                "${CMAKE_SOURCE_DIR}/src/platform/linux/evdi.cpp")
+    else()
+        message(WARNING "EVDI library not found. Virtual display support will not be available.
+                        Install libevdi-dev or build evdi from https://github.com/DisplayLink/evdi")
+    endif()
+endif()
+
 # evdev
 include(dependencies/libevdev_Sunshine)
 
