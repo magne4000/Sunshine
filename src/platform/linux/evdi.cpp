@@ -188,23 +188,22 @@ namespace platf {
       return true;
     }
 
-    // Add a new EVDI device
-    evdi_state.device_id = evdi_add_device();
-    if (evdi_state.device_id < 0) {
-      BOOST_LOG(error) << "Failed to add EVDI device"sv;
-      return false;
-    }
-
-    BOOST_LOG(info) << "Added EVDI device with ID: "sv << evdi_state.device_id;
+    // Use evdi_open_attached_to(NULL) which will:
+    // 1. Find an unused EVDI device, or
+    // 2. Add a new device and then open it
+    // This is the proper way to create/open an EVDI device
+    BOOST_LOG(info) << "Opening/creating EVDI device"sv;
+    evdi_state.handle = evdi_open_attached_to(NULL);
     
-    // Open the device using the device ID (not a path)
-    evdi_state.handle = evdi_open(evdi_state.device_id);
     if (evdi_state.handle == EVDI_INVALID_HANDLE) {
-      BOOST_LOG(error) << "Failed to open EVDI device with ID "sv << evdi_state.device_id;
+      BOOST_LOG(error) << "Failed to open/create EVDI device"sv;
       return false;
     }
     
-    BOOST_LOG(debug) << "Opened EVDI device ID "sv << evdi_state.device_id;
+    // Extract the device index from the handle (for logging)
+    // The handle contains the device_index field
+    evdi_state.device_id = evdi_state.handle->device_index;
+    BOOST_LOG(info) << "Opened EVDI device /dev/dri/card"sv << evdi_state.device_id;
 
     // Configure display parameters from client config
     evdi_state.width = config.width;
