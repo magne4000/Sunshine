@@ -141,22 +141,26 @@ namespace platf {
   std::vector<std::string> evdi_display_names() {
     std::vector<std::string> result;
 
+    // EVDI creates virtual displays on-demand when streaming starts
+    // Always return a placeholder to allow EVDI to be selected
+    result.push_back("EVDI Virtual Display");
+
     // Check if we have an active virtual display
     if (evdi_state.is_active) {
-      result.push_back("EVDI Virtual Display");
       BOOST_LOG(debug) << "EVDI virtual display is currently active"sv;
     }
-    // Also check for existing EVDI devices (supports dynamic detection)
+    // Also check for existing EVDI devices (supports pre-created devices)
     else {
+      int found_count = 0;
       for (int i = 0; i < 16; i++) {
         if (evdi_check_device(i) == AVAILABLE) {
-          result.push_back("EVDI-" + std::to_string(i));
-          BOOST_LOG(debug) << "Found EVDI device: EVDI-"sv << i;
+          found_count++;
+          BOOST_LOG(debug) << "Found pre-existing EVDI device: EVDI-"sv << i;
         }
       }
       
-      if (result.empty()) {
-        BOOST_LOG(debug) << "No EVDI devices currently available (virtual display can be created dynamically)"sv;
+      if (found_count == 0) {
+        BOOST_LOG(debug) << "No pre-existing EVDI devices (virtual display will be created on-demand)"sv;
       }
     }
 
