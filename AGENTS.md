@@ -128,7 +128,7 @@ The project uses `.clang-format` (LLVM-based style with custom settings). All C+
 
 **Option 1 - Manual:**
 ```bash
-find ./ -iname *.cpp -o -iname *.h -iname *.m -iname *.mm | xargs clang-format -i
+find ./ \( -iname "*.cpp" -o -iname "*.h" -o -iname "*.m" -o -iname "*.mm" \) | xargs clang-format -i
 ```
 
 **Option 2 - Python script (modifies files):**
