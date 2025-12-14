@@ -76,8 +76,17 @@ cmake -B cmake-build-debug -G Ninja -S . -DBUILD_TESTS=OFF
 # Disable docs
 cmake -B cmake-build-debug -G Ninja -S . -DBUILD_DOCS=OFF
 
+# Disable CUDA (if not needed or not available)
+cmake -B cmake-build-debug -G Ninja -S . -DSUNSHINE_ENABLE_CUDA=OFF
+
 # Release build (default is Release if not specified)
 cmake -B cmake-build-debug -G Ninja -S . -DCMAKE_BUILD_TYPE=Release
+
+# Combined example for faster development builds
+cmake -B cmake-build-debug -G Ninja -S . \
+  -DBUILD_TESTS=OFF \
+  -DBUILD_DOCS=OFF \
+  -DSUNSHINE_ENABLE_CUDA=OFF
 ```
 
 See `cmake/prep/options.cmake` for all available options.
@@ -311,16 +320,31 @@ std::string msg = boost::locale::translate("Hello world!");
 ## Key Dependencies
 
 ### Required Libraries (Linux example)
-- `libdrm-dev` - Display/DRM support
-- `libwayland-dev` - Wayland protocol
-- `libx11-xcb-dev` - X11 support
-- `libxcb-dri3-dev` - XCB extensions
-- `libxfixes-dev` - X11 fixes
-- `libgl-dev` - OpenGL
-- `libva` - VA-API (often needs latest from source)
-- `libopus` - Audio codec
-- `libssl` - OpenSSL
-- `miniupnpc` - UPnP support
+**Ubuntu/Debian** (validated list):
+```bash
+sudo apt-get install -y \
+  libayatana-appindicator3-dev \
+  libcap-dev \
+  libcurl4-openssl-dev \
+  libdrm-dev \
+  libevdev-dev \
+  libgbm-dev \
+  libgl-dev \
+  libminiupnpc-dev \
+  libnuma-dev \
+  libnotify-dev \
+  libopus-dev \
+  libpulse-dev \
+  libssl-dev \
+  libva-dev \
+  libwayland-dev \
+  libx11-xcb-dev \
+  libxcb-dri3-dev \
+  libxcb-xfixes0-dev \
+  libxfixes-dev
+```
+
+**Note**: In CI, `libva` is often built from latest source for best compatibility. For development, the system package is usually sufficient.
 
 ### Windows Dependencies (MSYS2 UCRT64)
 All packages prefixed with `mingw-w64-ucrt-x86_64-`:
