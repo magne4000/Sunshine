@@ -71,13 +71,19 @@ jobs:
           # First install dependencies
           pacman -S --needed --noconfirm libdrm
           
-          # Clone and build evdi
-          cd /tmp
+          # Create a build directory in builder's home
+          mkdir -p /home/builder/aur-build
+          chown -R builder:builder /home/builder/aur-build
+          
+          # Clone and build evdi as builder user
+          cd /home/builder/aur-build
           sudo -u builder git clone https://aur.archlinux.org/evdi.git
           cd evdi
           sudo -u builder makepkg -si --noconfirm
+          
+          # Clean up
           cd /
-          rm -rf /tmp/evdi
+          rm -rf /home/builder/aur-build
 
       - name: Checkout
         uses: actions/checkout@v6
