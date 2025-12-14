@@ -47,6 +47,12 @@ BuildRequires: systemd-rpm-macros
 BuildRequires: wget
 BuildRequires: which
 
+# EVDI is available in some repos - if not available, build will proceed without it
+# Use %{?_with_evdi} to optionally enable
+%if 0%{?_with_evdi}
+BuildRequires: libevdi-devel
+%endif
+
 %if 0%{?fedora}
 # Fedora-specific BuildRequires
 BuildRequires: appstream
@@ -190,6 +196,7 @@ cmake_args=(
   "-DSUNSHINE_ENABLE_WAYLAND=ON"
   "-DSUNSHINE_ENABLE_X11=ON"
   "-DSUNSHINE_ENABLE_DRM=ON"
+  "-DSUNSHINE_ENABLE_EVDI=ON"
   "-DSUNSHINE_PUBLISHER_NAME=LizardByte"
   "-DSUNSHINE_PUBLISHER_WEBSITE=https://app.lizardbyte.dev"
   "-DSUNSHINE_PUBLISHER_ISSUE_URL=https://app.lizardbyte.dev/support"
