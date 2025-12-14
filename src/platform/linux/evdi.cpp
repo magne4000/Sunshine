@@ -144,13 +144,19 @@ namespace platf {
     // Check if we have an active virtual display
     if (evdi_state.is_active) {
       result.push_back("EVDI Virtual Display");
+      BOOST_LOG(debug) << "EVDI virtual display is currently active"sv;
     }
-    // Also check for existing EVDI devices
+    // Also check for existing EVDI devices (supports dynamic detection)
     else {
       for (int i = 0; i < 16; i++) {
         if (evdi_check_device(i) == AVAILABLE) {
           result.push_back("EVDI-" + std::to_string(i));
+          BOOST_LOG(debug) << "Found EVDI device: EVDI-"sv << i;
         }
+      }
+      
+      if (result.empty()) {
+        BOOST_LOG(debug) << "No EVDI devices currently available (virtual display can be created dynamically)"sv;
       }
     }
 
@@ -255,7 +261,9 @@ namespace platf {
 
   std::shared_ptr<display_t> evdi_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
     // Create the virtual display if not already active
+    // This allows for dynamic creation when streaming starts
     if (!evdi_state.is_active) {
+      BOOST_LOG(info) << "Creating EVDI virtual display dynamically for streaming session"sv;
       if (!evdi_create_virtual_display(config)) {
         BOOST_LOG(error) << "Failed to create EVDI virtual display"sv;
         return nullptr;
@@ -275,7 +283,7 @@ namespace platf {
         auto displays = kms_display_names(hwdevice_type);
         if (!displays.empty()) {
           display_ready = true;
-          BOOST_LOG(debug) << "EVDI virtual display detected after "sv << (i + 1) * 100 << "ms"sv;
+          BOOST_LOG(info) << "EVDI virtual display detected by KMS after "sv << (i + 1) * 100 << "ms"sv;
         }
 #else
         // If KMS is not available, just wait a reasonable time
@@ -289,6 +297,9 @@ namespace platf {
         BOOST_LOG(warning) << "Timeout waiting for EVDI virtual display to be recognized"sv;
       }
     }
+    else {
+      BOOST_LOG(info) << "Using existing EVDI virtual display"sv;
+    }
 
     // Use KMS capture to grab from the virtual display
     // The virtual display should now appear as a DRM device that can be captured
@@ -296,6 +307,9 @@ namespace platf {
     extern std::shared_ptr<display_t> kms_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
     
     BOOST_LOG(info) << "Using KMS to capture from EVDI virtual display"sv;
+    
+    // If no specific display_name is provided, EVDI virtual display will be used automatically
+    // Otherwise, use the specified display (which could be the EVDI display if user configured it)
     return kms_display(hwdevice_type, display_name, config);
 #else
     BOOST_LOG(error) << "EVDI requires KMS/DRM support to be enabled"sv;

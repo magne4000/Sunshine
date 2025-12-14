@@ -1587,6 +1587,8 @@ namespace platf {
     std::vector<kms::card_descriptor_t> cds;
     std::vector<std::string> display_names;
 
+    BOOST_LOG(info) << "Detecting displays (KMS)"sv;
+
     fs::path card_dir {"/dev/dri"sv};
     for (auto &entry : fs::directory_iterator {card_dir}) {
       auto file = entry.path().filename();
@@ -1662,6 +1664,51 @@ namespace platf {
         kms::env_height = std::max(kms::env_height, (int) (crtc->y + crtc->height));
 
         kms::print(plane.get(), fb.get(), crtc.get());
+
+        // Log detected display information
+        std::string connector_name = "Unknown";
+        bool connected = false;
+        if (it != std::end(crtc_to_monitor)) {
+          const auto &monitor = it->second;
+          // Get connector name from type
+          const char *type_name = nullptr;
+          switch (monitor.type) {
+            case DRM_MODE_CONNECTOR_VGA: type_name = "VGA"; break;
+            case DRM_MODE_CONNECTOR_DVII: type_name = "DVI-I"; break;
+            case DRM_MODE_CONNECTOR_DVID: type_name = "DVI-D"; break;
+            case DRM_MODE_CONNECTOR_DVIA: type_name = "DVI-A"; break;
+            case DRM_MODE_CONNECTOR_Composite: type_name = "Composite"; break;
+            case DRM_MODE_CONNECTOR_SVIDEO: type_name = "S-Video"; break;
+            case DRM_MODE_CONNECTOR_LVDS: type_name = "LVDS"; break;
+            case DRM_MODE_CONNECTOR_Component: type_name = "Component"; break;
+            case DRM_MODE_CONNECTOR_9PinDIN: type_name = "DIN"; break;
+            case DRM_MODE_CONNECTOR_DisplayPort: type_name = "DP"; break;
+            case DRM_MODE_CONNECTOR_HDMIA: type_name = "HDMI-A"; break;
+            case DRM_MODE_CONNECTOR_HDMIB: type_name = "HDMI-B"; break;
+            case DRM_MODE_CONNECTOR_TV: type_name = "TV"; break;
+            case DRM_MODE_CONNECTOR_eDP: type_name = "eDP"; break;
+            case DRM_MODE_CONNECTOR_VIRTUAL: type_name = "VIRTUAL"; break;
+            case DRM_MODE_CONNECTOR_DSI: type_name = "DSI"; break;
+            case DRM_MODE_CONNECTOR_DPI: type_name = "DPI"; break;
+            case DRM_MODE_CONNECTOR_WRITEBACK: type_name = "WRITEBACK"; break;
+            case DRM_MODE_CONNECTOR_SPI: type_name = "SPI"; break;
+#ifdef DRM_MODE_CONNECTOR_USB
+            case DRM_MODE_CONNECTOR_USB: type_name = "USB"; break;
+#endif
+            default: type_name = "Unknown"; break;
+          }
+          connector_name = std::string(type_name) + "-" + std::to_string(monitor.index);
+          
+          // Check if connector is actually connected by looking it up
+          for (auto &conn : card.monitors(conn_type_count)) {
+            if (conn.crtc_id == plane->crtc_id) {
+              connected = conn.connected;
+              break;
+            }
+          }
+        }
+        
+        BOOST_LOG(info) << "Detected display: "sv << connector_name << " (id: "sv << count << ") connected: "sv << (connected ? "true"sv : "false"sv);
 
         display_names.emplace_back(std::to_string(count++));
       }
