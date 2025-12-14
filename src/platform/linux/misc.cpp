@@ -43,6 +43,10 @@
 #include "src/platform/common.h"
 #include "vaapi.h"
 
+#ifdef SUNSHINE_BUILD_EVDI
+  #include "evdi.h"
+#endif
+
 #ifdef __GNUC__
   #define SUNSHINE_GNUC_EXTENSION __extension__
 #else
@@ -328,11 +332,16 @@ namespace platf {
   }
 
   void streaming_will_start() {
-    // Nothing to do
+    // Nothing to do - virtual display is created on-demand in evdi_display()
   }
 
   void streaming_will_stop() {
-    // Nothing to do
+#ifdef SUNSHINE_BUILD_EVDI
+    // Clean up virtual display if it was created
+    if (sources[source::EVDI]) {
+      evdi_destroy_virtual_display();
+    }
+#endif
   }
 
   void restart_on_exit() {
@@ -872,6 +881,9 @@ namespace platf {
 #ifdef SUNSHINE_BUILD_CUDA
       NVFBC,  ///< NvFBC
 #endif
+#ifdef SUNSHINE_BUILD_EVDI
+      EVDI,  ///< EVDI virtual display
+#endif
 #ifdef SUNSHINE_BUILD_WAYLAND
       WAYLAND,  ///< Wayland
 #endif
@@ -893,6 +905,16 @@ namespace platf {
 
   bool verify_nvfbc() {
     return !nvfbc_display_names().empty();
+  }
+#endif
+
+#ifdef SUNSHINE_BUILD_EVDI
+  std::vector<std::string> evdi_display_names();
+  std::shared_ptr<display_t> evdi_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
+  bool verify_evdi();
+
+  bool verify_evdi_source() {
+    return verify_evdi();
   }
 #endif
 
@@ -930,6 +952,11 @@ namespace platf {
       return nvfbc_display_names();
     }
 #endif
+#ifdef SUNSHINE_BUILD_EVDI
+    if (sources[source::EVDI]) {
+      return evdi_display_names();
+    }
+#endif
 #ifdef SUNSHINE_BUILD_WAYLAND
     if (sources[source::WAYLAND]) {
       return wl_display_names();
@@ -962,6 +989,12 @@ namespace platf {
     if (sources[source::NVFBC] && hwdevice_type == mem_type_e::cuda) {
       BOOST_LOG(info) << "Screencasting with NvFBC"sv;
       return nvfbc_display(hwdevice_type, display_name, config);
+    }
+#endif
+#ifdef SUNSHINE_BUILD_EVDI
+    if (sources[source::EVDI]) {
+      BOOST_LOG(info) << "Screencasting with EVDI virtual display"sv;
+      return evdi_display(hwdevice_type, display_name, config);
     }
 #endif
 #ifdef SUNSHINE_BUILD_WAYLAND
@@ -1014,6 +1047,13 @@ namespace platf {
     if ((config::video.capture.empty() && sources.none()) || config::video.capture == "nvfbc") {
       if (verify_nvfbc()) {
         sources[source::NVFBC] = true;
+      }
+    }
+#endif
+#ifdef SUNSHINE_BUILD_EVDI
+    if (config::video.capture == "evdi") {
+      if (verify_evdi_source()) {
+        sources[source::EVDI] = true;
       }
     }
 #endif

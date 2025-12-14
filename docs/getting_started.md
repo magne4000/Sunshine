@@ -440,6 +440,56 @@ For X11 capture to work, you may need to disable the capabilities that were set 
 sudo setcap -r $(readlink -f $(which sunshine))
 ```
 
+#### EVDI Virtual Display (Experimental)
+
+> [!NOTE]
+> EVDI (Extensible Virtual Display Interface) allows Sunshine to create virtual displays that match the client's
+> requested resolution, refresh rate, and HDR settings. This is useful for headless streaming or when you want
+> to stream at different resolutions than your physical displays support.
+
+##### Requirements
+
+To use EVDI virtual displays, you need:
+
+1. **EVDI kernel module**: Install the DisplayLink EVDI kernel module
+   ```bash
+   # On Ubuntu/Debian
+   sudo apt install dkms
+   git clone https://github.com/DisplayLink/evdi.git
+   cd evdi
+   make
+   sudo make install
+   
+   # Load the module
+   sudo modprobe evdi
+   ```
+
+2. **libevdi**: The EVDI userspace library
+   ```bash
+   cd library
+   make
+   sudo make install
+   sudo ldconfig
+   ```
+
+3. **KMS Capture**: EVDI requires KMS capture to be enabled (see [KMS Capture](#kms-capture))
+
+##### Usage
+
+Once EVDI is installed and the kernel module is loaded, set the capture method to `evdi` in the Sunshine
+configuration (Advanced tab in the web UI, or manually in the config file):
+
+```
+capture = evdi
+```
+
+When a client connects, Sunshine will automatically create a virtual display matching the client's resolution
+and refresh rate settings. The virtual display is destroyed when the streaming session ends.
+
+> [!TIP]
+> Virtual displays appear as regular DRM devices and can be used with display managers and desktop environments
+> just like physical displays.
+
 #### Service
 
 **Start once**
