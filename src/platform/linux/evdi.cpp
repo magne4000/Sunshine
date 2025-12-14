@@ -6,6 +6,7 @@
 
 #include <cstring>
 #include <fcntl.h>
+#include <thread>
 #include <unistd.h>
 
 #include "graphics.h"
@@ -86,9 +87,11 @@ namespace platf {
     std::vector<unsigned char> generate_edid(int width, int height, int refresh_rate, bool hdr_enabled) {
       std::vector<unsigned char> edid(base_edid, base_edid + sizeof(base_edid));
 
-      // For now, use the base EDID
       // TODO: Customize EDID based on width, height, refresh_rate, and hdr_enabled
       // This would involve updating the descriptor blocks to match the requested mode
+      // For now, the base EDID provides a working 1920x1080@60Hz display
+      // Future enhancement: Generate proper timing descriptors for arbitrary resolutions
+      // and add HDR metadata extension blocks when hdr_enabled is true
 
       // Calculate and update checksum
       unsigned char checksum = 0;
@@ -258,8 +261,33 @@ namespace platf {
         return nullptr;
       }
 
-      // Give the system a moment to recognize the new display
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      // Wait for the system to recognize the new display
+      // Try for up to 5 seconds, checking every 100ms
+      int attempts = 50;
+      bool display_ready = false;
+      
+      for (int i = 0; i < attempts && !display_ready; i++) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        
+        // Check if KMS can see the display
+#ifdef SUNSHINE_BUILD_DRM
+        extern std::vector<std::string> kms_display_names(mem_type_e hwdevice_type);
+        auto displays = kms_display_names(hwdevice_type);
+        if (!displays.empty()) {
+          display_ready = true;
+          BOOST_LOG(debug) << "EVDI virtual display detected after "sv << (i + 1) * 100 << "ms"sv;
+        }
+#else
+        // If KMS is not available, just wait a reasonable time
+        if (i >= 5) {  // 500ms
+          display_ready = true;
+        }
+#endif
+      }
+      
+      if (!display_ready) {
+        BOOST_LOG(warning) << "Timeout waiting for EVDI virtual display to be recognized"sv;
+      }
     }
 
     // Use KMS capture to grab from the virtual display
