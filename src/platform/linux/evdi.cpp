@@ -305,24 +305,20 @@ namespace platf {
     // The virtual display should now appear as a DRM device that can be captured
 #ifdef SUNSHINE_BUILD_DRM
     extern std::shared_ptr<display_t> kms_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
-    extern std::vector<std::string> kms_display_names(mem_type_e hwdevice_type);
+    extern std::string find_virtual_display(mem_type_e hwdevice_type);
     
     BOOST_LOG(info) << "Using KMS to capture from EVDI virtual display"sv;
     
     // When EVDI is active, we want to use the virtual display by default
-    // The EVDI virtual display appears as a VIRTUAL connector in KMS
-    // We need to find it and use it, superseding any configured output_name
+    // Find the VIRTUAL connector (EVDI) in the KMS display list
     std::string evdi_display_name = display_name;
     
     if (evdi_state.is_active) {
       // Try to find the EVDI/VIRTUAL display in the KMS display list
-      auto kms_displays = kms_display_names(hwdevice_type);
+      std::string virtual_display_id = find_virtual_display(hwdevice_type);
       
-      // The EVDI display should be the most recently added display
-      // Since we just created it, it should be the last one in the list
-      if (!kms_displays.empty()) {
-        // Use the last display (most recently added) as the EVDI display
-        evdi_display_name = kms_displays.back();
+      if (!virtual_display_id.empty()) {
+        evdi_display_name = virtual_display_id;
         BOOST_LOG(info) << "Using EVDI virtual display (KMS id: "sv << evdi_display_name << ")"sv;
         
         // If user specified a display_name, log that we're overriding it
@@ -332,7 +328,8 @@ namespace platf {
         }
       }
       else {
-        BOOST_LOG(warning) << "Could not find EVDI virtual display in KMS list"sv;
+        BOOST_LOG(warning) << "Could not find EVDI VIRTUAL display in KMS list"sv;
+        // Fall back to using display_name or empty string
       }
     }
     
