@@ -82,8 +82,13 @@ jobs:
           # Build the library as builder user
           sudo -u builder make
           
-          # Install the library (as root)
+          # Install the library and headers (as root)
           make install PREFIX=/usr
+          
+          # Ensure header is in the correct location
+          cp -f evdi_lib.h /usr/include/
+          
+          # Update library cache
           ldconfig
           
           # Create pkg-config file for cmake to find evdi
@@ -103,6 +108,7 @@ jobs:
           
           # Clean up
           cd /
+          rm -rf /home/builder/evdi-build
           rm -rf /home/builder/evdi-build
 
       - name: Checkout
