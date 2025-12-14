@@ -304,36 +304,52 @@ namespace platf {
     // Find the VIRTUAL connector (EVDI) in the KMS display list
     std::string evdi_display_name = display_name;
     
-    if (evdi_state.is_active) {
+    if (evdi_state.is_active && evdi_state.handle != EVDI_INVALID_HANDLE) {
       BOOST_LOG(debug) << "EVDI: Searching for VIRTUAL connector in KMS display list"sv;
-      // Try to find the EVDI/VIRTUAL display in the KMS display list
-      std::string virtual_display_id = find_virtual_display(hwdevice_type);
       
-      if (!virtual_display_id.empty()) {
-        evdi_display_name = virtual_display_id;
-        BOOST_LOG(info) << "EVDI: Found virtual display with KMS id: "sv << evdi_display_name;
+      // Try to find the EVDI/VIRTUAL display in the KMS display list
+      try {
+        std::string virtual_display_id = find_virtual_display(hwdevice_type);
         
-        // If user specified a display_name, log that we're overriding it
-        if (!display_name.empty() && display_name != evdi_display_name) {
-          BOOST_LOG(info) << "EVDI: Overriding configured Display Id ("sv << display_name 
-                         << ") with EVDI virtual display ("sv << evdi_display_name << ")"sv;
+        if (!virtual_display_id.empty()) {
+          evdi_display_name = virtual_display_id;
+          BOOST_LOG(info) << "EVDI: Found virtual display with KMS id: "sv << evdi_display_name;
+          
+          // If user specified a display_name, log that we're overriding it
+          if (!display_name.empty() && display_name != evdi_display_name) {
+            BOOST_LOG(info) << "EVDI: Overriding configured Display Id ("sv << display_name 
+                           << ") with EVDI virtual display ("sv << evdi_display_name << ")"sv;
+          }
+        }
+        else {
+          BOOST_LOG(warning) << "EVDI: Could not find VIRTUAL connector in KMS list"sv;
+          BOOST_LOG(debug) << "EVDI: This may indicate the display hasn't been detected yet by KMS"sv;
+          // Fall back to using display_name or empty string
         }
       }
-      else {
-        BOOST_LOG(warning) << "EVDI: Could not find VIRTUAL connector in KMS list"sv;
-        BOOST_LOG(debug) << "EVDI: This may indicate the display hasn't been detected yet by KMS"sv;
+      catch (const std::exception &e) {
+        BOOST_LOG(error) << "EVDI: Exception while finding virtual display: "sv << e.what();
         // Fall back to using display_name or empty string
       }
     }
     
     BOOST_LOG(debug) << "EVDI: Calling kms_display() with display_name='"sv << evdi_display_name << "'"sv;
-    auto result = kms_display(hwdevice_type, evdi_display_name, config);
-    if (result) {
-      BOOST_LOG(debug) << "EVDI: kms_display() succeeded, returning display handle"sv;
+    
+    std::shared_ptr<display_t> result;
+    try {
+      result = kms_display(hwdevice_type, evdi_display_name, config);
+      if (result) {
+        BOOST_LOG(debug) << "EVDI: kms_display() succeeded, returning display handle"sv;
+      }
+      else {
+        BOOST_LOG(error) << "EVDI: kms_display() returned nullptr"sv;
+      }
     }
-    else {
-      BOOST_LOG(error) << "EVDI: kms_display() returned nullptr"sv;
+    catch (const std::exception &e) {
+      BOOST_LOG(error) << "EVDI: Exception in kms_display(): "sv << e.what();
+      return nullptr;
     }
+    
     return result;
 #else
     BOOST_LOG(error) << "EVDI: EVDI requires KMS/DRM support to be enabled"sv;
