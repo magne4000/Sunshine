@@ -183,6 +183,10 @@ namespace platf {
     return true;
   }
 
+  bool evdi_is_active() {
+    return evdi_state.is_active;
+  }
+
   bool evdi_create_virtual_display(const video::config_t &config) {
     if (evdi_state.is_active) {
       BOOST_LOG(warning) << "EVDI virtual display already active"sv;

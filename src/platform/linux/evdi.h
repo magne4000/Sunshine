@@ -34,6 +34,12 @@ namespace platf {
   bool verify_evdi();
 
   /**
+   * @brief Check if EVDI virtual display is currently active.
+   * @return true if EVDI display is active, false otherwise.
+   */
+  bool evdi_is_active();
+
+  /**
    * @brief Create a virtual display device when streaming starts.
    * @param config The video configuration from the client.
    * @return true if successful, false otherwise.

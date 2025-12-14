@@ -338,7 +338,7 @@ namespace platf {
   void streaming_will_stop() {
 #ifdef SUNSHINE_BUILD_EVDI
     // Clean up virtual display if it was created
-    if (sources[source::EVDI]) {
+    if (evdi_is_active()) {
       evdi_destroy_virtual_display();
     }
 #endif
