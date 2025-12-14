@@ -149,19 +149,8 @@ namespace platf {
     if (evdi_state.is_active) {
       BOOST_LOG(debug) << "EVDI virtual display is currently active"sv;
     }
-    // Also check for existing EVDI devices (supports pre-created devices)
     else {
-      int found_count = 0;
-      for (int i = 0; i < 16; i++) {
-        if (evdi_check_device(i) == AVAILABLE) {
-          found_count++;
-          BOOST_LOG(debug) << "Found pre-existing EVDI device: EVDI-"sv << i;
-        }
-      }
-      
-      if (found_count == 0) {
-        BOOST_LOG(debug) << "No pre-existing EVDI devices (virtual display will be created on-demand)"sv;
-      }
+      BOOST_LOG(debug) << "EVDI virtual display will be created on-demand when streaming starts"sv;
     }
 
     return result;
