@@ -161,6 +161,12 @@ build() {
       fi
     fi
 
+    if [[ "${_use_evdi::1}" == "t" ]]; then
+      _cmake_options+=(-DSUNSHINE_ENABLE_EVDI=ON)
+    else
+      _cmake_options+=(-DSUNSHINE_ENABLE_EVDI=OFF)
+    fi
+
     if [[ "${_run_unit_tests::1}" != "t" ]]; then
       _cmake_options+=(-DBUILD_TESTS=OFF)
     fi

@@ -113,9 +113,11 @@ if(${SUNSHINE_ENABLE_EVDI})
         list(APPEND PLATFORM_TARGET_FILES
                 "${CMAKE_SOURCE_DIR}/src/platform/linux/evdi.h"
                 "${CMAKE_SOURCE_DIR}/src/platform/linux/evdi.cpp")
+        message(STATUS "EVDI virtual display support enabled")
     else()
-        message(WARNING "EVDI library not found. Virtual display support will not be available.
-                        Install libevdi-dev or build evdi from https://github.com/DisplayLink/evdi")
+        message(FATAL_ERROR "EVDI library not found but SUNSHINE_ENABLE_EVDI is ON. "
+                           "Install libevdi-dev or build evdi from https://github.com/DisplayLink/evdi. "
+                           "To build without EVDI, set -DSUNSHINE_ENABLE_EVDI=OFF")
     endif()
 endif()
 
