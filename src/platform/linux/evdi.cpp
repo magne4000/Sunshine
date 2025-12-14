@@ -139,6 +139,8 @@ namespace platf {
   }  // anonymous namespace
 
   std::vector<std::string> evdi_display_names() {
+    BOOST_LOG(debug) << "EVDI: evdi_display_names() called, is_active="sv << evdi_state.is_active;
+    
     std::vector<std::string> result;
 
     // EVDI creates virtual displays on-demand when streaming starts
@@ -147,12 +149,13 @@ namespace platf {
 
     // Check if we have an active virtual display
     if (evdi_state.is_active) {
-      BOOST_LOG(debug) << "EVDI virtual display is currently active"sv;
+      BOOST_LOG(debug) << "EVDI: Virtual display is currently active (device /dev/dri/card"sv << evdi_state.device_id << ")"sv;
     }
     else {
-      BOOST_LOG(debug) << "EVDI virtual display will be created on-demand when streaming starts"sv;
+      BOOST_LOG(debug) << "EVDI: Virtual display will be created on-demand when needed"sv;
     }
 
+    BOOST_LOG(debug) << "EVDI: Returning "sv << result.size() << " display name(s)"sv;
     return result;
   }
 
@@ -160,7 +163,9 @@ namespace platf {
     // EVDI was compiled in, so it's available for use
     // We don't try to create devices here - that happens when streaming starts
     // This allows the system to work even if no virtual displays exist yet
-    BOOST_LOG(info) << "EVDI virtual display support is available"sv;
+    BOOST_LOG(info) << "EVDI: Virtual display support is available (compiled in)"sv;
+    BOOST_LOG(debug) << "EVDI: verify_evdi() called - not checking for kernel module at this stage"sv;
+    BOOST_LOG(debug) << "EVDI: Runtime requires evdi-dkms kernel module to be loaded"sv;
     return true;
   }
 
@@ -175,21 +180,28 @@ namespace platf {
     }
 
     BOOST_LOG(info) << "Creating EVDI virtual display for streaming session"sv;
+    BOOST_LOG(debug) << "EVDI: Requested display config: "sv << config.width << "x"sv << config.height 
+                     << "@"sv << config.framerate << "Hz, dynamicRange="sv << config.dynamicRange;
 
     // Use evdi_open_attached_to(NULL) which will:
     // 1. Find an unused EVDI device, or
     // 2. Add a new device and then open it
     // This is the proper way to create/open an EVDI device
+    BOOST_LOG(debug) << "EVDI: Calling evdi_open_attached_to(NULL) to create/open device"sv;
     evdi_state.handle = evdi_open_attached_to(NULL);
     
     if (evdi_state.handle == EVDI_INVALID_HANDLE) {
-      BOOST_LOG(error) << "Failed to open/create EVDI device. Is the evdi kernel module (evdi-dkms) loaded?"sv;
+      BOOST_LOG(error) << "EVDI: Failed to open/create EVDI device"sv;
+      BOOST_LOG(error) << "EVDI: Make sure the evdi kernel module is loaded (install evdi-dkms package and run 'sudo modprobe evdi')"sv;
+      BOOST_LOG(debug) << "EVDI: Check 'lsmod | grep evdi' to verify kernel module is loaded"sv;
+      BOOST_LOG(debug) << "EVDI: Check 'ls -la /sys/devices/evdi/' to verify evdi sysfs is available"sv;
       return false;
     }
     
     // Extract the device index from the handle (for logging)
     evdi_state.device_id = evdi_state.handle->device_index;
-    BOOST_LOG(info) << "Opened EVDI device /dev/dri/card"sv << evdi_state.device_id;
+    BOOST_LOG(info) << "EVDI: Opened device /dev/dri/card"sv << evdi_state.device_id;
+    BOOST_LOG(debug) << "EVDI: Device handle: "sv << (void*)evdi_state.handle << ", device_id: "sv << evdi_state.device_id;
 
     // Configure display parameters from client config
     evdi_state.width = config.width;
@@ -200,18 +212,22 @@ namespace platf {
     evdi_state.hdr_enabled = (config.dynamicRange > 0);
 
     // Generate EDID for the requested mode
+    BOOST_LOG(debug) << "EVDI: Generating EDID for "sv << evdi_state.width << "x"sv << evdi_state.height
+                     << "@"sv << evdi_state.refresh_rate << "Hz"sv;
     auto edid = generate_edid(evdi_state.width, evdi_state.height,
                               evdi_state.refresh_rate, evdi_state.hdr_enabled);
 
-    BOOST_LOG(info) << "Creating EVDI virtual display: "sv
+    BOOST_LOG(info) << "EVDI: Connecting virtual display: "sv
                     << evdi_state.width << "x"sv << evdi_state.height
                     << "@"sv << evdi_state.refresh_rate << "Hz"
                     << (evdi_state.hdr_enabled ? " (HDR)"sv : ""sv);
 
     // Connect the display with the EDID
+    BOOST_LOG(debug) << "EVDI: Calling evdi_connect() with "sv << edid.size() << " byte EDID"sv;
     evdi_connect(evdi_state.handle, edid.data(), edid.size(), 0);
 
     // Set up event handlers
+    BOOST_LOG(debug) << "EVDI: Setting up event handlers"sv;
     struct evdi_event_context event_context = {};
     event_context.mode_changed_handler = mode_changed_handler;
     event_context.dpms_handler = dpms_handler;
@@ -220,22 +236,29 @@ namespace platf {
     event_context.user_data = nullptr;
 
     // Process initial events
+    BOOST_LOG(debug) << "EVDI: Processing initial events"sv;
     evdi_handle_events(evdi_state.handle, &event_context);
 
     evdi_state.is_active = true;
 
-    BOOST_LOG(info) << "EVDI virtual display created successfully"sv;
+    BOOST_LOG(info) << "EVDI: Virtual display created successfully"sv;
+    BOOST_LOG(debug) << "EVDI: Display state - width="sv << evdi_state.width 
+                     << ", height="sv << evdi_state.height 
+                     << ", refresh_rate="sv << evdi_state.refresh_rate
+                     << ", device_id="sv << evdi_state.device_id;
     return true;
   }
 
   void evdi_destroy_virtual_display() {
     if (!evdi_state.is_active) {
+      BOOST_LOG(debug) << "EVDI: destroy_virtual_display called but display not active"sv;
       return;
     }
 
-    BOOST_LOG(info) << "Destroying EVDI virtual display"sv;
+    BOOST_LOG(info) << "EVDI: Destroying virtual display (device /dev/dri/card"sv << evdi_state.device_id << ")"sv;
 
     if (evdi_state.handle != EVDI_INVALID_HANDLE) {
+      BOOST_LOG(debug) << "EVDI: Disconnecting and closing device handle"sv;
       evdi_disconnect(evdi_state.handle);
       evdi_close(evdi_state.handle);
       evdi_state.handle = EVDI_INVALID_HANDLE;
@@ -244,30 +267,34 @@ namespace platf {
     evdi_state.device_id = -1;
     evdi_state.is_active = false;
 
-    BOOST_LOG(info) << "EVDI virtual display destroyed"sv;
+    BOOST_LOG(info) << "EVDI: Virtual display destroyed"sv;
   }
 
   std::shared_ptr<display_t> evdi_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
+    BOOST_LOG(debug) << "EVDI: evdi_display() called - hwdevice_type="sv << (int)hwdevice_type 
+                     << ", display_name='"sv << display_name << "', is_active="sv << evdi_state.is_active;
+    
     // EVDI virtual displays don't exist until we create them
     // For now, create the device when first requested
     // This happens during encoder validation at startup, which is okay
     // The device will persist for the lifetime of Sunshine
     
     if (!evdi_state.is_active) {
-      BOOST_LOG(info) << "Creating EVDI virtual display"sv;
+      BOOST_LOG(info) << "EVDI: Creating virtual display for first time"sv;
       if (!evdi_create_virtual_display(config)) {
-        BOOST_LOG(error) << "Failed to create EVDI virtual display"sv;
-        BOOST_LOG(error) << "Make sure the evdi kernel module (evdi-dkms package) is installed and loaded"sv;
+        BOOST_LOG(error) << "EVDI: Failed to create virtual display"sv;
+        BOOST_LOG(error) << "EVDI: Make sure the evdi kernel module (evdi-dkms package) is installed and loaded"sv;
         return nullptr;
       }
 
       // Wait for the system to recognize the new display
       // The DRM/KMS subsystem needs time to detect the new card
-      BOOST_LOG(debug) << "Waiting for EVDI virtual display to be recognized by KMS"sv;
+      BOOST_LOG(debug) << "EVDI: Waiting 500ms for KMS to detect new display"sv;
       std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      BOOST_LOG(debug) << "EVDI: Wait complete, proceeding to use KMS for capture"sv;
     }
     else {
-      BOOST_LOG(debug) << "Using existing EVDI virtual display"sv;
+      BOOST_LOG(debug) << "EVDI: Reusing existing virtual display"sv;
     }
 
     // Use KMS capture to grab from the virtual display
@@ -275,35 +302,45 @@ namespace platf {
 #ifdef SUNSHINE_BUILD_DRM
     extern std::shared_ptr<display_t> kms_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
     
-    BOOST_LOG(info) << "Using KMS to capture from EVDI virtual display"sv;
+    BOOST_LOG(debug) << "EVDI: Using KMS to capture from EVDI virtual display"sv;
     
     // When EVDI is active, we want to use the virtual display by default
     // Find the VIRTUAL connector (EVDI) in the KMS display list
     std::string evdi_display_name = display_name;
     
     if (evdi_state.is_active) {
+      BOOST_LOG(debug) << "EVDI: Searching for VIRTUAL connector in KMS display list"sv;
       // Try to find the EVDI/VIRTUAL display in the KMS display list
       std::string virtual_display_id = find_virtual_display(hwdevice_type);
       
       if (!virtual_display_id.empty()) {
         evdi_display_name = virtual_display_id;
-        BOOST_LOG(info) << "Using EVDI virtual display (KMS id: "sv << evdi_display_name << ")"sv;
+        BOOST_LOG(info) << "EVDI: Found virtual display with KMS id: "sv << evdi_display_name;
         
         // If user specified a display_name, log that we're overriding it
         if (!display_name.empty() && display_name != evdi_display_name) {
-          BOOST_LOG(info) << "Overriding configured Display Id ("sv << display_name 
+          BOOST_LOG(info) << "EVDI: Overriding configured Display Id ("sv << display_name 
                          << ") with EVDI virtual display ("sv << evdi_display_name << ")"sv;
         }
       }
       else {
-        BOOST_LOG(warning) << "Could not find EVDI VIRTUAL display in KMS list"sv;
+        BOOST_LOG(warning) << "EVDI: Could not find VIRTUAL connector in KMS list"sv;
+        BOOST_LOG(debug) << "EVDI: This may indicate the display hasn't been detected yet by KMS"sv;
         // Fall back to using display_name or empty string
       }
     }
     
-    return kms_display(hwdevice_type, evdi_display_name, config);
+    BOOST_LOG(debug) << "EVDI: Calling kms_display() with display_name='"sv << evdi_display_name << "'"sv;
+    auto result = kms_display(hwdevice_type, evdi_display_name, config);
+    if (result) {
+      BOOST_LOG(debug) << "EVDI: kms_display() succeeded, returning display handle"sv;
+    }
+    else {
+      BOOST_LOG(error) << "EVDI: kms_display() returned nullptr"sv;
+    }
+    return result;
 #else
-    BOOST_LOG(error) << "EVDI requires KMS/DRM support to be enabled"sv;
+    BOOST_LOG(error) << "EVDI: EVDI requires KMS/DRM support to be enabled"sv;
     return nullptr;
 #endif
   }
