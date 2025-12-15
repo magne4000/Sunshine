@@ -162,10 +162,29 @@ namespace platf {
     // EVDI was compiled in, so it's available for use
     // We don't try to create devices here - that happens when streaming starts
     // This allows the system to work even if no virtual displays exist yet
-    BOOST_LOG(info) << "EVDI: Virtual display support is available (compiled in)"sv;
-    BOOST_LOG(debug) << "EVDI: verify_evdi() called - not checking for kernel module at this stage"sv;
-    BOOST_LOG(debug) << "EVDI: Runtime requires evdi-dkms kernel module to be loaded"sv;
-    return true;
+    BOOST_LOG(debug) << "EVDI: verify_evdi() called - checking if library is functional"sv;
+    
+    // Do a very basic sanity check: can we check device status without crashing?
+    try {
+      // evdi_check_device checks if the kernel module is available
+      // This is a read-only operation that shouldn't crash
+      int available = evdi_check_device(0);
+      BOOST_LOG(debug) << "EVDI: Device check result: "sv << available << " (1=available, 0=not available)"sv;
+      
+      // We don't fail if device is not available, since it can be created later
+      // But at least we know the library is working
+      BOOST_LOG(info) << "EVDI: Virtual display support is available (library functional)"sv;
+      BOOST_LOG(debug) << "EVDI: Runtime requires evdi-dkms kernel module to be loaded for actual use"sv;
+      return true;
+    }
+    catch (const std::exception &e) {
+      BOOST_LOG(error) << "EVDI: Exception during verification: "sv << e.what();
+      return false;
+    }
+    catch (...) {
+      BOOST_LOG(error) << "EVDI: Unknown exception during verification"sv;
+      return false;
+    }
   }
 
   bool evdi_is_active() {
