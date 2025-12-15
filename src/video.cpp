@@ -1121,6 +1121,41 @@ namespace video {
     }
   }
 
+#ifdef SUNSHINE_BUILD_EVDI
+  /**
+   * @brief Prepares the EVDI virtual display for streaming if EVDI is configured
+   * @param client_config The client configuration containing resolution, framerate, and HDR settings
+   * @return true if preparation succeeded or wasn't needed, false if preparation failed
+   */
+  bool prepare_evdi_display(const config_t &client_config) {
+    BOOST_LOG(debug) << "EVDI: Checking if preparation needed - capture='"sv << config::video.capture 
+                     << "'"sv << ", is_active="sv << platf::evdi_is_active();
+    
+    if (config::video.capture == "evdi" && !platf::evdi_is_active()) {
+      constexpr auto KMS_DETECTION_WAIT_MS = std::chrono::milliseconds(500);
+      
+      BOOST_LOG(info) << "EVDI: Preparing virtual display for streaming session"sv;
+      BOOST_LOG(debug) << "EVDI: Client config: "sv << client_config.width << "x"sv 
+                       << client_config.height << "@"sv << client_config.framerate 
+                       << "Hz, HDR="sv << (client_config.dynamicRange > 0);
+      
+      if (!platf::evdi_prepare_stream(client_config)) {
+        BOOST_LOG(error) << "EVDI: Failed to prepare virtual display - streaming cannot start"sv;
+        return false;
+      }
+      
+      // Wait for the system to recognize the new display
+      BOOST_LOG(debug) << "EVDI: Waiting "sv << KMS_DETECTION_WAIT_MS.count() << "ms for KMS to detect new display"sv;
+      std::this_thread::sleep_for(KMS_DETECTION_WAIT_MS);
+    }
+    else {
+      BOOST_LOG(debug) << "EVDI: Preparation skipped - capture method is not 'evdi' or EVDI is already active"sv;
+    }
+    
+    return true;
+  }
+#endif
+
   void captureThread(
     std::shared_ptr<safe::queue_t<capture_ctx_t>> capture_ctx_queue,
     sync_util::sync_t<std::weak_ptr<platf::display_t>> &display_wp,
@@ -1149,6 +1184,13 @@ namespace video {
       return;
     }
     capture_ctxs.emplace_back(std::move(*initial_capture_ctx));
+
+#ifdef SUNSHINE_BUILD_EVDI
+    // Explicitly prepare EVDI virtual display for streaming if EVDI is selected
+    if (!prepare_evdi_display(capture_ctxs.front().config)) {
+      return;
+    }
+#endif
 
     // Get all the monitor names now, rather than at boot, to
     // get the most up-to-date list available monitors
@@ -2130,32 +2172,8 @@ namespace video {
 
 #ifdef SUNSHINE_BUILD_EVDI
     // Explicitly prepare EVDI virtual display for streaming if EVDI is selected
-    // This creates the virtual display with the client's requested configuration
-    // before we attempt to use it for capture
-    BOOST_LOG(debug) << "EVDI: Checking if preparation needed - capture='"sv << config::video.capture 
-                     << "'"sv << ", is_active="sv << platf::evdi_is_active();
-    
-    if (config::video.capture == "evdi" && !platf::evdi_is_active()) {
-      constexpr auto KMS_DETECTION_WAIT_MS = std::chrono::milliseconds(500);
-      
-      const auto &client_config = synced_session_ctxs.front()->config;
-      
-      BOOST_LOG(info) << "EVDI: Preparing virtual display for streaming session"sv;
-      BOOST_LOG(debug) << "EVDI: Client config: "sv << client_config.width << "x"sv 
-                       << client_config.height << "@"sv << client_config.framerate 
-                       << "Hz, HDR="sv << (client_config.dynamicRange > 0);
-      
-      if (!platf::evdi_prepare_stream(client_config)) {
-        BOOST_LOG(error) << "EVDI: Failed to prepare virtual display - streaming cannot start"sv;
-        return encode_e::error;
-      }
-      
-      // Wait for the system to recognize the new display
-      BOOST_LOG(debug) << "EVDI: Waiting "sv << KMS_DETECTION_WAIT_MS.count() << "ms for KMS to detect new display"sv;
-      std::this_thread::sleep_for(KMS_DETECTION_WAIT_MS);
-    }
-    else {
-      BOOST_LOG(debug) << "EVDI: Preparation skipped - capture method is not 'evdi' or EVDI is already active"sv;
+    if (!prepare_evdi_display(synced_session_ctxs.front()->config)) {
+      return encode_e::error;
     }
 #endif
 
