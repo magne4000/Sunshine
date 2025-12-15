@@ -2132,6 +2132,9 @@ namespace video {
     // Explicitly prepare EVDI virtual display for streaming if EVDI is selected
     // This creates the virtual display with the client's requested configuration
     // before we attempt to use it for capture
+    BOOST_LOG(debug) << "EVDI: Checking if preparation needed - capture='"sv << config::video.capture 
+                     << "'"sv << ", is_active="sv << platf::evdi_is_active();
+    
     if (config::video.capture == "evdi" && !platf::evdi_is_active()) {
       constexpr auto KMS_DETECTION_WAIT_MS = std::chrono::milliseconds(500);
       
@@ -2150,6 +2153,9 @@ namespace video {
       // Wait for the system to recognize the new display
       BOOST_LOG(debug) << "EVDI: Waiting "sv << KMS_DETECTION_WAIT_MS.count() << "ms for KMS to detect new display"sv;
       std::this_thread::sleep_for(KMS_DETECTION_WAIT_MS);
+    }
+    else {
+      BOOST_LOG(debug) << "EVDI: Preparation skipped - capture method is not 'evdi' or EVDI is already active"sv;
     }
 #endif
 
