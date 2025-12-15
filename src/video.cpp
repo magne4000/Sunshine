@@ -2132,21 +2132,24 @@ namespace video {
     // Explicitly prepare EVDI virtual display for streaming if EVDI is selected
     // This creates the virtual display with the client's requested configuration
     // before we attempt to use it for capture
-    if (platf::evdi_is_active() || config::video.capture == "evdi") {
-      BOOST_LOG(info) << "EVDI: Preparing virtual display for streaming session"sv;
-      BOOST_LOG(debug) << "EVDI: Client config: "sv << synced_session_ctxs.front()->config.width << "x"sv 
-                       << synced_session_ctxs.front()->config.height << "@"sv 
-                       << synced_session_ctxs.front()->config.framerate << "Hz, HDR="sv 
-                       << (synced_session_ctxs.front()->config.dynamicRange > 0);
+    if (config::video.capture == "evdi" && !platf::evdi_is_active()) {
+      constexpr auto KMS_DETECTION_WAIT_MS = std::chrono::milliseconds(500);
       
-      if (!platf::evdi_prepare_stream(synced_session_ctxs.front()->config)) {
+      const auto &client_config = synced_session_ctxs.front()->config;
+      
+      BOOST_LOG(info) << "EVDI: Preparing virtual display for streaming session"sv;
+      BOOST_LOG(debug) << "EVDI: Client config: "sv << client_config.width << "x"sv 
+                       << client_config.height << "@"sv << client_config.framerate 
+                       << "Hz, HDR="sv << (client_config.dynamicRange > 0);
+      
+      if (!platf::evdi_prepare_stream(client_config)) {
         BOOST_LOG(error) << "EVDI: Failed to prepare virtual display - streaming cannot start"sv;
         return encode_e::error;
       }
       
       // Wait for the system to recognize the new display
-      BOOST_LOG(debug) << "EVDI: Waiting 500ms for KMS to detect new display"sv;
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+      BOOST_LOG(debug) << "EVDI: Waiting "sv << KMS_DETECTION_WAIT_MS.count() << "ms for KMS to detect new display"sv;
+      std::this_thread::sleep_for(KMS_DETECTION_WAIT_MS);
     }
 #endif
 
