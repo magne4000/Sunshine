@@ -51,4 +51,10 @@ namespace platf {
    */
   void evdi_destroy_virtual_display();
 
+  /**
+   * @brief Enable EVDI device creation (call before actual streaming starts).
+   * This prevents device creation during encoder validation at startup.
+   */
+  void evdi_enable_device_creation();
+
 }  // namespace platf

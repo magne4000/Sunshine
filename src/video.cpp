@@ -30,6 +30,12 @@ extern "C" {
 #include "sync.h"
 #include "video.h"
 
+#ifdef __linux__
+  #ifdef SUNSHINE_BUILD_EVDI
+    #include "platform/linux/evdi.h"
+  #endif
+#endif
+
 #ifdef _WIN32
 extern "C" {
   #include <libavutil/hwcontext_d3d11va.h>
@@ -2108,6 +2114,12 @@ namespace video {
     int &display_p
   ) {
     const auto &encoder = *chosen_encoder;
+
+#ifdef SUNSHINE_BUILD_EVDI
+    // Enable EVDI device creation now that we're in an actual streaming session
+    // This prevents device creation during encoder validation at startup
+    platf::evdi_enable_device_creation();
+#endif
 
     std::shared_ptr<platf::display_t> disp;
 

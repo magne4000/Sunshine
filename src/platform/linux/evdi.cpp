@@ -32,6 +32,7 @@ namespace platf {
       int height = 1080;
       int refresh_rate = 60;
       bool hdr_enabled = false;
+      bool allow_device_creation = false;  // Set to true when ready for actual streaming
     };
 
     evdi_state_t evdi_state;
@@ -302,35 +303,36 @@ namespace platf {
     }
 
     evdi_state.is_active = false;
+    evdi_state.allow_device_creation = false;  // Reset flag when destroying
 
     BOOST_LOG(info) << "EVDI: Virtual display destroyed"sv;
   }
 
+  void evdi_enable_device_creation() {
+    BOOST_LOG(debug) << "EVDI: Device creation enabled - ready for streaming"sv;
+    evdi_state.allow_device_creation = true;
+  }
+
   std::shared_ptr<display_t> evdi_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
     BOOST_LOG(debug) << "EVDI: evdi_display() called - hwdevice_type="sv << (int)hwdevice_type 
-                     << ", display_name='"sv << display_name << "', is_active="sv << evdi_state.is_active;
+                     << ", display_name='"sv << display_name << "', is_active="sv << evdi_state.is_active 
+                     << ", allow_device_creation="sv << evdi_state.allow_device_creation;
     
 #ifndef SUNSHINE_BUILD_DRM
     BOOST_LOG(error) << "EVDI: EVDI requires KMS/DRM support to be enabled"sv;
     return nullptr;
 #else
     // EVDI virtual displays don't exist until we create them
-    // We defer creation until actually needed to avoid issues during encoder probing
-    // The virtual display creation should only happen when we're actually about to stream
+    // During startup, encoder validation occurs which tries to test all capture methods
+    // We must NOT create EVDI devices during this validation as it causes segfaults
+    // Only create the virtual display when actual streaming is about to start
     
-    // Check if this is just encoder validation (dummy config with no actual streaming)
-    // During encoder validation, we should NOT create the EVDI device as it can cause crashes
-    // if the kernel module isn't fully functional
-    bool is_encoder_validation = (config.width == 1920 && config.height == 1080 && 
-                                   config.framerate == 60 && config.numRefFrames <= 1);
-    
-    if (is_encoder_validation && !evdi_state.is_active) {
-      // During encoder validation, don't actually create the device
-      // Just return nullptr to indicate EVDI isn't ready yet
-      // This prevents segfaults when the kernel module has issues
-      BOOST_LOG(info) << "EVDI: Encoder validation detected - deferring device creation"sv;
+    if (!evdi_state.allow_device_creation && !evdi_state.is_active) {
+      // We're not ready to create devices yet (likely during encoder validation)
+      // Return nullptr to skip EVDI during validation
+      BOOST_LOG(info) << "EVDI: Deferring device creation - not yet ready (encoder validation in progress)"sv;
       BOOST_LOG(debug) << "EVDI: Virtual display will be created when actual streaming starts"sv;
-      BOOST_LOG(debug) << "EVDI: If encoder validation fails, ensure evdi-dkms v1.14.11 is installed and loaded"sv;
+      BOOST_LOG(debug) << "EVDI: This is normal during startup - encoders are being validated"sv;
       return nullptr;
     }
     
