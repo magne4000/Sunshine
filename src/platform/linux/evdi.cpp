@@ -4,6 +4,7 @@
  */
 #include "evdi.h"
 
+#include <chrono>
 #include <cstring>
 #include <fcntl.h>
 #include <thread>
@@ -300,42 +301,21 @@ namespace platf {
       return false;
     }
 
-    // Set up event handlers
-    BOOST_LOG(debug) << "EVDI: Setting up event handlers"sv;
-    struct evdi_event_context event_context = {};
-    event_context.mode_changed_handler = mode_changed_handler;
-    event_context.dpms_handler = dpms_handler;
-    event_context.update_ready_handler = update_ready_handler;
-    event_context.crtc_state_handler = crtc_state_handler;
-    event_context.user_data = nullptr;
-
-    // Process initial events
-    BOOST_LOG(debug) << "EVDI: Processing initial events"sv;
-    try {
-      evdi_handle_events(evdi_state.handle, &event_context);
-      BOOST_LOG(debug) << "EVDI: Initial events processed successfully"sv;
-    }
-    catch (const std::exception &e) {
-      BOOST_LOG(error) << "EVDI: Exception in evdi_handle_events(): "sv << e.what();
-      evdi_disconnect(evdi_state.handle);
-      evdi_close(evdi_state.handle);
-      evdi_state.handle = EVDI_INVALID_HANDLE;
-      return false;
-    }
-    catch (...) {
-      BOOST_LOG(error) << "EVDI: Unknown exception in evdi_handle_events()"sv;
-      evdi_disconnect(evdi_state.handle);
-      evdi_close(evdi_state.handle);
-      evdi_state.handle = EVDI_INVALID_HANDLE;
-      return false;
-    }
-
+    // Mark as active before waiting for KMS detection
     evdi_state.is_active = true;
 
-    BOOST_LOG(info) << "EVDI: Virtual display created successfully"sv;
+    BOOST_LOG(info) << "EVDI: Virtual display configured successfully"sv;
     BOOST_LOG(debug) << "EVDI: Display state - width="sv << evdi_state.width 
                      << ", height="sv << evdi_state.height 
                      << ", refresh_rate="sv << evdi_state.refresh_rate;
+    
+    // Wait for KMS to detect the newly configured display
+    // The kernel DRM subsystem needs time to enumerate the new EVDI connector
+    constexpr auto KMS_DETECTION_WAIT_MS = 500;
+    BOOST_LOG(debug) << "EVDI: Waiting "sv << KMS_DETECTION_WAIT_MS << "ms for KMS to detect display..."sv;
+    std::this_thread::sleep_for(std::chrono::milliseconds(KMS_DETECTION_WAIT_MS));
+    BOOST_LOG(debug) << "EVDI: KMS detection wait complete"sv;
+    
     return true;
   }
 
