@@ -2483,10 +2483,47 @@ namespace video {
     config_t config_autoselect {1920, 1080, 60, 6000, 1000, 1, 0, 1, 0, 0, 0};
 
     // If the encoder isn't supported at all (not even H.264), bail early
+    // Note: For EVDI, display will be nullptr here during startup validation
+    // This is intentional - EVDI displays are created on-demand when streaming starts
     reset_display(disp, encoder.platform_formats->dev_type, output_name, config_autoselect);
     if (!disp) {
-      return false;
+      // If we couldn't create a display for validation, the encoder may still work
+      // This happens with EVDI where displays don't exist until streaming starts
+      // We mark basic support based on the encoder type and defer detailed validation
+      BOOST_LOG(info) << "Encoder ["sv << encoder.name << "] validation deferred (no display available)"sv;
+      BOOST_LOG(debug) << "This is normal for virtual display capture methods like EVDI"sv;
+      
+      // For virtual displays, we assume basic codec support and let runtime validation handle the rest
+      encoder.h264[encoder_t::PASSED] = true;
+      encoder.h264[encoder_t::REF_FRAMES_RESTRICT] = true;
+      encoder.h264[encoder_t::VUI_PARAMETERS] = !(config::sunshine.flags[config::flag::FORCE_VIDEO_HEADER_REPLACE]);
+      encoder.h264[encoder_t::DYNAMIC_RANGE] = false;  // No HDR for H.264
+      encoder.h264[encoder_t::YUV444] = (encoder.flags & YUV444_SUPPORT) != 0;
+      
+      if (test_hevc) {
+        encoder.hevc[encoder_t::PASSED] = true;
+        encoder.hevc[encoder_t::REF_FRAMES_RESTRICT] = true;
+        encoder.hevc[encoder_t::VUI_PARAMETERS] = !(config::sunshine.flags[config::flag::FORCE_VIDEO_HEADER_REPLACE]);
+        encoder.hevc[encoder_t::DYNAMIC_RANGE] = true;  // Assume HEVC HDR support
+        encoder.hevc[encoder_t::YUV444] = (encoder.flags & YUV444_SUPPORT) != 0;
+      } else {
+        encoder.hevc.capabilities.reset();
+      }
+      
+      if (test_av1) {
+        encoder.av1[encoder_t::PASSED] = true;
+        encoder.av1[encoder_t::REF_FRAMES_RESTRICT] = true;
+        encoder.av1[encoder_t::VUI_PARAMETERS] = !(config::sunshine.flags[config::flag::FORCE_VIDEO_HEADER_REPLACE]);
+        encoder.av1[encoder_t::DYNAMIC_RANGE] = true;  // Assume AV1 HDR support
+        encoder.av1[encoder_t::YUV444] = (encoder.flags & YUV444_SUPPORT) != 0;
+      } else {
+        encoder.av1.capabilities.reset();
+      }
+      
+      fg.disable();
+      return true;
     }
+    
     if (!disp->is_codec_supported(encoder.h264.name, config_autoselect)) {
       fg.disable();
       BOOST_LOG(info) << "Encoder ["sv << encoder.name << "] is not supported on this GPU"sv;

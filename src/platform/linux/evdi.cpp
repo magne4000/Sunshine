@@ -322,17 +322,14 @@ namespace platf {
     BOOST_LOG(error) << "EVDI: EVDI requires KMS/DRM support to be enabled"sv;
     return nullptr;
 #else
-    // EVDI virtual displays don't exist until we create them
-    // During startup, encoder validation occurs which tries to test all capture methods
-    // We must NOT create EVDI devices during this validation as it causes segfaults
-    // Only create the virtual display when actual streaming is about to start
+    // EVDI virtual displays are created on-demand when streaming starts
+    // The allow_device_creation flag ensures we only create devices during actual streaming,
+    // not during encoder validation at startup
     
     if (!evdi_state.allow_device_creation && !evdi_state.is_active) {
-      // We're not ready to create devices yet (likely during encoder validation)
-      // Return nullptr to skip EVDI during validation
-      BOOST_LOG(info) << "EVDI: Deferring device creation - not yet ready (encoder validation in progress)"sv;
-      BOOST_LOG(debug) << "EVDI: Virtual display will be created when actual streaming starts"sv;
-      BOOST_LOG(debug) << "EVDI: This is normal during startup - encoders are being validated"sv;
+      // During encoder validation, we don't have a display yet
+      // This is expected and normal - encoder validation now handles this gracefully
+      BOOST_LOG(debug) << "EVDI: Device creation not enabled yet - encoder validation will use defaults"sv;
       return nullptr;
     }
     
