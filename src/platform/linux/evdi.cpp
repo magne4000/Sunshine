@@ -270,6 +270,10 @@ namespace platf {
     BOOST_LOG(debug) << "EVDI: evdi_display() called - hwdevice_type="sv << (int)hwdevice_type 
                      << ", display_name='"sv << display_name << "', is_active="sv << evdi_state.is_active;
     
+#ifndef SUNSHINE_BUILD_DRM
+    BOOST_LOG(error) << "EVDI: EVDI requires KMS/DRM support to be enabled"sv;
+    return nullptr;
+#else
     // EVDI virtual displays don't exist until we create them
     // For now, create the device when first requested
     // This happens during encoder validation at startup, which is okay
@@ -295,7 +299,6 @@ namespace platf {
 
     // Use KMS capture to grab from the virtual display
     // The virtual display should now appear as a DRM device that can be captured
-#ifdef SUNSHINE_BUILD_DRM
     extern std::shared_ptr<display_t> kms_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config);
     
     BOOST_LOG(debug) << "EVDI: Using KMS to capture from EVDI virtual display"sv;
@@ -308,7 +311,9 @@ namespace platf {
       BOOST_LOG(debug) << "EVDI: Searching for VIRTUAL connector in KMS display list"sv;
       
       // Try to find the EVDI/VIRTUAL display in the KMS display list
+      // Protect against exceptions in case KMS isn't properly initialized
       try {
+        extern std::string find_virtual_display(mem_type_e hwdevice_type);
         std::string virtual_display_id = find_virtual_display(hwdevice_type);
         
         if (!virtual_display_id.empty()) {
@@ -328,7 +333,12 @@ namespace platf {
         }
       }
       catch (const std::exception &e) {
-        BOOST_LOG(error) << "EVDI: Exception while finding virtual display: "sv << e.what();
+        BOOST_LOG(warning) << "EVDI: Exception while finding virtual display: "sv << e.what();
+        BOOST_LOG(debug) << "EVDI: This may occur if KMS is not fully initialized - falling back to default"sv;
+        // Fall back to using display_name or empty string
+      }
+      catch (...) {
+        BOOST_LOG(warning) << "EVDI: Unknown exception while finding virtual display"sv;
         // Fall back to using display_name or empty string
       }
     }
@@ -349,11 +359,12 @@ namespace platf {
       BOOST_LOG(error) << "EVDI: Exception in kms_display(): "sv << e.what();
       return nullptr;
     }
+    catch (...) {
+      BOOST_LOG(error) << "EVDI: Unknown exception in kms_display()"sv;
+      return nullptr;
+    }
     
     return result;
-#else
-    BOOST_LOG(error) << "EVDI: EVDI requires KMS/DRM support to be enabled"sv;
-    return nullptr;
 #endif
   }
 
