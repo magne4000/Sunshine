@@ -64,6 +64,68 @@ jobs:
             xorg-server-xvfb
           pacman -Scc --noconfirm
 
+      - name: Install EVDI library from source
+        shell: bash
+        run: |
+          # Install build dependencies
+          pacman -S --needed --noconfirm libdrm make gcc
+          
+          # Create a build directory in builder's home
+          mkdir -p /home/builder/evdi-build
+          chown -R builder:builder /home/builder/evdi-build
+          
+          # Clone evdi from official DisplayLink repository at tag v1.14.11
+          cd /home/builder/evdi-build
+          sudo -u builder git clone --depth 1 --branch v1.14.11 https://github.com/DisplayLink/evdi.git
+          cd evdi/library
+          
+          # Build the library as builder user
+          sudo -u builder make
+          
+          # Install the library and headers (as root)
+          make install PREFIX=/usr
+          
+          # Ensure header is in the correct location
+          cp -f evdi_lib.h /usr/include/
+          
+          # Ensure library is in the correct location (evdi makefile might put it elsewhere)
+          if [ -f /usr/local/lib/libevdi.so ]; then
+            cp -f /usr/local/lib/libevdi.so* /usr/lib/ || true
+          fi
+          
+          # Update library cache
+          ldconfig
+          
+          # Verify installation
+          ls -la /usr/lib/libevdi.so* || echo "Warning: libevdi.so not found in /usr/lib"
+          ls -la /usr/include/evdi_lib.h || echo "Warning: evdi_lib.h not found in /usr/include"
+          
+          # Create pkg-config file for cmake to find evdi
+          mkdir -p /usr/lib/pkgconfig
+          cat > /usr/lib/pkgconfig/evdi.pc << 'EVDI_PC_EOF'
+          prefix=/usr
+          exec_prefix=${prefix}
+          libdir=${exec_prefix}/lib
+          includedir=${prefix}/include
+          
+          Name: evdi
+          Description: Extensible Virtual Display Interface
+          Version: 1.14.11
+          Libs: -L${libdir} -levdi
+          Cflags: -I${includedir}
+          EVDI_PC_EOF
+          
+          # Verify pkg-config works
+          pkg-config --exists evdi && echo "pkg-config: evdi found" || echo "pkg-config: evdi NOT found"
+          pkg-config --modversion evdi || true
+          pkg-config --libs evdi || true
+          pkg-config --cflags evdi || true
+          
+          # Clean up
+          cd /
+          rm -rf /home/builder/evdi-build
+          rm -rf /home/builder/evdi-build
+
       - name: Checkout
         uses: actions/checkout@v6
 
@@ -133,12 +195,14 @@ jobs:
 
           # Export PKGBUILD options so they're available to makepkg
           export _use_cuda="${_use_cuda}"
+          export _use_evdi="true"
           export _run_unit_tests="${_run_unit_tests}"
           export _support_headless_testing="${_support_headless_testing}"
 
           # Build the package as builder user (pass through environment variables)
           sudo -u builder env \
             _use_cuda="${_use_cuda}" \
+            _use_evdi="true" \
             _run_unit_tests="${_run_unit_tests}" \
             _support_headless_testing="${_support_headless_testing}" \
             makepkg -si --noconfirm

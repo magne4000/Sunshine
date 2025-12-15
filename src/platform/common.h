@@ -594,6 +594,15 @@ namespace platf {
   // A list of names of displays accepted as display_name with the mem_type_e
   std::vector<std::string> display_names(mem_type_e hwdevice_type);
 
+#if defined(__linux__) && !defined(__ANDROID__)
+  /**
+   * @brief Find a VIRTUAL connector display (typically EVDI) in the KMS display list.
+   * @param hwdevice_type The hardware device type for encoding.
+   * @return The display ID as a string, or empty string if not found.
+   */
+  std::string find_virtual_display(mem_type_e hwdevice_type);
+#endif
+
   /**
    * @brief Check if GPUs/drivers have changed since the last call to this function.
    * @return `true` if a change has occurred or if it is unknown whether a change occurred.

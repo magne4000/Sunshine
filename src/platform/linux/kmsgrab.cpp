@@ -228,6 +228,34 @@ namespace platf {
       return DRM_MODE_CONNECTOR_Unknown;
     }
 
+    static const char *to_connector_name(std::uint32_t connector_type) {
+      switch (connector_type) {
+        case DRM_MODE_CONNECTOR_VGA: return "VGA";
+        case DRM_MODE_CONNECTOR_DVII: return "DVI-I";
+        case DRM_MODE_CONNECTOR_DVID: return "DVI-D";
+        case DRM_MODE_CONNECTOR_DVIA: return "DVI-A";
+        case DRM_MODE_CONNECTOR_Composite: return "Composite";
+        case DRM_MODE_CONNECTOR_SVIDEO: return "S-Video";
+        case DRM_MODE_CONNECTOR_LVDS: return "LVDS";
+        case DRM_MODE_CONNECTOR_Component: return "Component";
+        case DRM_MODE_CONNECTOR_9PinDIN: return "DIN";
+        case DRM_MODE_CONNECTOR_DisplayPort: return "DP";
+        case DRM_MODE_CONNECTOR_HDMIA: return "HDMI-A";
+        case DRM_MODE_CONNECTOR_HDMIB: return "HDMI-B";
+        case DRM_MODE_CONNECTOR_TV: return "TV";
+        case DRM_MODE_CONNECTOR_eDP: return "eDP";
+        case DRM_MODE_CONNECTOR_VIRTUAL: return "VIRTUAL";
+        case DRM_MODE_CONNECTOR_DSI: return "DSI";
+        case DRM_MODE_CONNECTOR_DPI: return "DPI";
+        case DRM_MODE_CONNECTOR_WRITEBACK: return "WRITEBACK";
+        case DRM_MODE_CONNECTOR_SPI: return "SPI";
+#ifdef DRM_MODE_CONNECTOR_USB
+        case DRM_MODE_CONNECTOR_USB: return "USB";
+#endif
+        default: return "Unknown";
+      }
+    }
+
     class plane_it_t: public round_robin_util::it_wrap_t<plane_t::element_type, plane_it_t> {
     public:
       plane_it_t(int fd, std::uint32_t *plane_p, std::uint32_t *end):
@@ -1587,6 +1615,8 @@ namespace platf {
     std::vector<kms::card_descriptor_t> cds;
     std::vector<std::string> display_names;
 
+    BOOST_LOG(info) << "Detecting displays (KMS)"sv;
+
     fs::path card_dir {"/dev/dri"sv};
     for (auto &entry : fs::directory_iterator {card_dir}) {
       auto file = entry.path().filename();
@@ -1663,6 +1693,25 @@ namespace platf {
 
         kms::print(plane.get(), fb.get(), crtc.get());
 
+        // Log detected display information
+        std::string connector_name = "Unknown";
+        bool connected = false;
+        if (it != std::end(crtc_to_monitor)) {
+          const auto &monitor = it->second;
+          const char *type_name = kms::to_connector_name(monitor.type);
+          connector_name = std::string(type_name) + "-" + std::to_string(monitor.index);
+          
+          // Check if connector is actually connected by looking it up
+          for (auto &conn : card.monitors(conn_type_count)) {
+            if (conn.crtc_id == plane->crtc_id) {
+              connected = conn.connected;
+              break;
+            }
+          }
+        }
+        
+        BOOST_LOG(info) << "Detected display: "sv << connector_name << " (id: "sv << count << ") connected: "sv << (connected ? "true"sv : "false"sv);
+
         display_names.emplace_back(std::to_string(count++));
       }
 
@@ -1696,6 +1745,75 @@ namespace platf {
     kms::card_descriptors = std::move(cds);
 
     return display_names;
+  }
+
+  std::string find_virtual_display(mem_type_e hwdevice_type) {
+    // Find a VIRTUAL connector (typically EVDI) in the KMS display list
+    // Returns the display ID as a string, or empty string if not found
+    
+    if (!fs::exists("/dev/dri")) {
+      return {};
+    }
+
+    if (!gbm::create_device) {
+      return {};
+    }
+
+    kms::conn_type_count_t conn_type_count;
+    int count = 0;
+
+    fs::path card_dir {"/dev/dri"sv};
+    for (auto &entry : fs::directory_iterator {card_dir}) {
+      auto file = entry.path().filename();
+      auto filestring = file.generic_string();
+      if (filestring.size() < 4 || std::string_view {filestring}.substr(0, 4) != "card"sv) {
+        continue;
+      }
+
+      kms::card_t card;
+      if (card.init(entry.path().c_str())) {
+        continue;
+      }
+
+      // Skip non-Nvidia cards if we're looking for CUDA devices
+      if (hwdevice_type == mem_type_e::cuda && !card.is_nvidia()) {
+        continue;
+      }
+
+      auto crtc_to_monitor = kms::map_crtc_to_monitor(card.monitors(conn_type_count));
+
+      auto end = std::end(card);
+      for (auto plane = std::begin(card); plane != end; ++plane) {
+        if (!plane->fb_id || card.is_cursor(plane->plane_id)) {
+          continue;
+        }
+
+        auto fb = card.fb(plane.get());
+        if (!fb || !fb->handles[0]) {
+          continue;
+        }
+
+        auto crtc = card.crtc(plane->crtc_id);
+        if (!crtc) {
+          continue;
+        }
+
+        auto it = crtc_to_monitor.find(plane->crtc_id);
+        if (it != std::end(crtc_to_monitor)) {
+          const auto &monitor = it->second;
+          
+          // Check if this is a VIRTUAL connector (EVDI)
+          if (monitor.type == DRM_MODE_CONNECTOR_VIRTUAL) {
+            BOOST_LOG(debug) << "Found VIRTUAL display at KMS id: "sv << count;
+            return std::to_string(count);
+          }
+        }
+        
+        count++;
+      }
+    }
+
+    return {};
   }
 
 }  // namespace platf

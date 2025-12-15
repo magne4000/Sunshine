@@ -338,7 +338,7 @@ namespace platf {
   void streaming_will_stop() {
 #ifdef SUNSHINE_BUILD_EVDI
     // Clean up virtual display if it was created
-    if (sources[source::EVDI]) {
+    if (evdi_is_active()) {
       evdi_destroy_virtual_display();
     }
 #endif
@@ -1054,6 +1054,10 @@ namespace platf {
     if (config::video.capture == "evdi") {
       if (verify_evdi_source()) {
         sources[source::EVDI] = true;
+        BOOST_LOG(info) << "EVDI virtual display capture is available"sv;
+      }
+      else {
+        BOOST_LOG(warning) << "EVDI virtual display support was requested but is not available"sv;
       }
     }
 #endif

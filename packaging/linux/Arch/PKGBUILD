@@ -5,6 +5,7 @@
 : "${_run_unit_tests:=false}"  # if set to true; unit tests will be executed post build; useful in CI
 : "${_support_headless_testing:=false}"
 : "${_use_cuda:=detect}" # nvenc
+: "${_use_evdi:=detect}" # evdi virtual display
 
 : "${_commit:=@GITHUB_COMMIT@}"
 
@@ -61,6 +62,7 @@ checkdepends=(
 
 optdepends=(
   'libva-mesa-driver: AMD GPU encoding support'
+  'evdi-dkms: EVDI virtual display kernel module (required for EVDI virtual display support)'
 )
 
 provides=()
@@ -79,6 +81,13 @@ if [[ "${_use_cuda::1}" == "t" ]]; then
     'cuda: Nvidia GPU encoding support'
   )
 fi
+
+if [[ "${_use_evdi::1}" == "d" ]] && pacman -Qi evdi &> /dev/null; then
+  _use_evdi=true
+fi
+
+# Note: evdi library is built from source in CI before makepkg runs
+# It is not added to makedepends to avoid dependency on AUR packages
 
 if [[ "${_support_headless_testing::1}" == "t" ]]; then
   optdepends+=(
@@ -147,6 +156,12 @@ build() {
           export NVCC_CCBIN="/usr/bin/g++"
         fi
       fi
+    fi
+
+    if [[ "${_use_evdi::1}" == "t" ]]; then
+      _cmake_options+=(-DSUNSHINE_ENABLE_EVDI=ON)
+    else
+      _cmake_options+=(-DSUNSHINE_ENABLE_EVDI=OFF)
     fi
 
     if [[ "${_run_unit_tests::1}" != "t" ]]; then

@@ -222,6 +222,7 @@ function add_debian_based_deps() {
     "libcurl4-openssl-dev"
     "libdrm-dev"  # KMS
     "libevdev-dev"
+    "libevdi-dev"  # EVDI virtual display
     "libgbm-dev"
     "libminiupnpc-dev"
     "libnotify-dev"
@@ -534,6 +535,7 @@ function run_step_cmake() {
     "-DSUNSHINE_ENABLE_WAYLAND=ON"
     "-DSUNSHINE_ENABLE_X11=ON"
     "-DSUNSHINE_ENABLE_DRM=ON"
+    "-DSUNSHINE_ENABLE_EVDI=ON"
   )
 
   if [ "$appimage_build" == 1 ]; then
