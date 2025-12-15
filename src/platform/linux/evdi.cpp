@@ -179,12 +179,11 @@ namespace platf {
       return true;
     }
 
-    BOOST_LOG(info) << "Creating EVDI virtual display for streaming session"sv;
+    BOOST_LOG(info) << "Preparing EVDI virtual display for streaming session"sv;
     BOOST_LOG(debug) << "EVDI: Requested display config: "sv << config.width << "x"sv << config.height 
                      << "@"sv << config.framerate << "Hz, dynamicRange="sv << config.dynamicRange;
 
     // Check if the EVDI kernel module is properly loaded by checking for sysfs interface
-    // The evdi module creates /sys/devices/evdi/add when properly loaded
     BOOST_LOG(debug) << "EVDI: Checking if kernel module is properly loaded..."sv;
     if (access("/sys/devices/evdi", F_OK) != 0) {
       BOOST_LOG(error) << "EVDI: /sys/devices/evdi does not exist"sv;
@@ -195,71 +194,48 @@ namespace platf {
       return false;
     }
     
-    if (access("/sys/devices/evdi/add", F_OK) != 0) {
-      BOOST_LOG(error) << "EVDI: /sys/devices/evdi/add does not exist"sv;
-      BOOST_LOG(error) << "EVDI: The evdi kernel module loaded but sysfs interface is incomplete"sv;
-      BOOST_LOG(error) << "EVDI: Try unloading and reloading: sudo modprobe -r evdi && sudo modprobe evdi"sv;
-      BOOST_LOG(debug) << "EVDI: Check kernel logs for errors: dmesg | tail -50 | grep evdi"sv;
-      return false;
-    }
-    
-    // Check if we have write permissions to /sys/devices/evdi/add
-    // The EVDI library needs to write to this file to create new devices
-    if (access("/sys/devices/evdi/add", W_OK) != 0) {
-      BOOST_LOG(error) << "EVDI: No write permission for /sys/devices/evdi/add"sv;
-      BOOST_LOG(error) << "EVDI: Creating virtual displays requires write access to the EVDI sysfs interface"sv;
-      BOOST_LOG(error) << "EVDI: Solution: Grant write permission to /sys/devices/evdi/add"sv;
-      BOOST_LOG(info) << "EVDI: Add udev rule to grant access without requiring root:"sv;
-      BOOST_LOG(info) << "EVDI:   sudo tee /etc/udev/rules.d/99-evdi.rules > /dev/null << 'EOF'"sv;
-      BOOST_LOG(info) << "EVDI:   KERNEL==\"card[0-9]*\", SUBSYSTEM==\"drm\", DRIVERS==\"evdi\", MODE=\"0666\""sv;
-      BOOST_LOG(info) << "EVDI:   SUBSYSTEM==\"evdi\", MODE=\"0666\""sv;
-      BOOST_LOG(info) << "EVDI:   EOF"sv;
-      BOOST_LOG(info) << "EVDI:   sudo udevadm control --reload-rules && sudo udevadm trigger"sv;
-      BOOST_LOG(debug) << "EVDI: Current permissions: "sv;
-      BOOST_LOG(debug) << "EVDI:   ls -la /sys/devices/evdi/add"sv;
-      BOOST_LOG(debug) << "EVDI:   id -u (current user: "sv << getuid() << ", groups: "sv << getgid() << ")"sv;
-      return false;
-    }
-    
-    BOOST_LOG(debug) << "EVDI: Kernel module sysfs interface found with write permissions - proceeding with device creation"sv;
+    BOOST_LOG(debug) << "EVDI: Kernel module loaded, searching for available EVDI device nodes..."sv;
 
-    // The evdi_open_attached_to(NULL) function is deprecated and has a bug - it calls strlen(NULL)
-    // which causes a segfault. Instead, we use the recommended approach:
-    // 1. Call evdi_add_device() to create a new device (writes "1" to /sys/devices/evdi/add)
-    // 2. The function returns the device index, or -1 on failure
-    // 3. Call evdi_open(device_index) to open the created device
-    
-    BOOST_LOG(debug) << "EVDI: Calling evdi_add_device() to create new virtual display device"sv;
-    
-    int device_index = -1;
-    try {
-      device_index = evdi_add_device();
-      BOOST_LOG(debug) << "EVDI: evdi_add_device() returned device_index="sv << device_index;
+    // Iterate through device nodes to find an EVDI device using evdi_check_device()
+    // As per EVDI documentation: "In order to distinguish non-EVDI nodes from a node 
+    // that's created by EVDI kernel module, evdi_check_device function should be used."
+    // We scan /dev/dri/card* devices to find EVDI virtual displays
+    int found_device_index = -1;
+    for (int i = 0; i < 16; i++) {  // Check card0 through card15
+      evdi_device_status status = evdi_check_device(i);
+      
+      if (status == AVAILABLE) {
+        BOOST_LOG(debug) << "EVDI: Found available EVDI device at index "sv << i;
+        found_device_index = i;
+        break;
+      }
+      else if (status == UNRECOGNIZED) {
+        // Not an EVDI device, continue searching
+        continue;
+      }
+      else if (status == NOT_PRESENT) {
+        // Device node doesn't exist
+        continue;
+      }
     }
-    catch (const std::exception &e) {
-      BOOST_LOG(error) << "EVDI: Exception in evdi_add_device(): "sv << e.what();
-      BOOST_LOG(error) << "EVDI: This indicates a problem with the EVDI library or kernel module"sv;
+    
+    if (found_device_index < 0) {
+      BOOST_LOG(error) << "EVDI: No available EVDI device found"sv;
+      BOOST_LOG(error) << "EVDI: The EVDI kernel module may not have created any device nodes"sv;
+      BOOST_LOG(error) << "EVDI: Ensure evdi-dkms is properly installed and the kernel module is loaded"sv;
+      BOOST_LOG(info) << "EVDI: Try: sudo modprobe evdi"sv;
+      BOOST_LOG(debug) << "EVDI: Check device nodes: ls -la /dev/dri/card*"sv;
+      BOOST_LOG(debug) << "EVDI: Check kernel logs: dmesg | grep evdi"sv;
       return false;
     }
-    catch (...) {
-      BOOST_LOG(error) << "EVDI: Unknown exception in evdi_add_device()"sv;
-      BOOST_LOG(error) << "EVDI: This indicates a serious problem with the EVDI library or kernel module"sv;
-      return false;
-    }
     
-    if (device_index < 0) {
-      BOOST_LOG(error) << "EVDI: evdi_add_device() failed to create device (returned "sv << device_index << ")"sv;
-      BOOST_LOG(error) << "EVDI: This usually means write permission denied to /sys/devices/evdi/add"sv;
-      BOOST_LOG(info) << "EVDI: Check permissions: ls -la /sys/devices/evdi/add"sv;
-      return false;
-    }
+    BOOST_LOG(info) << "EVDI: Using EVDI device at index "sv << found_device_index;
     
-    BOOST_LOG(debug) << "EVDI: Device created successfully, now opening device "sv << device_index;
-    
+    // Open the EVDI device
     evdi_handle handle = EVDI_INVALID_HANDLE;
     try {
-      handle = evdi_open(device_index);
-      BOOST_LOG(debug) << "EVDI: evdi_open() returned handle="sv << (void*)handle;
+      handle = evdi_open(found_device_index);
+      BOOST_LOG(debug) << "EVDI: evdi_open("sv << found_device_index << ") returned handle="sv << (void*)handle;
     }
     catch (const std::exception &e) {
       BOOST_LOG(error) << "EVDI: Exception in evdi_open(): "sv << e.what();
@@ -275,10 +251,10 @@ namespace platf {
     evdi_state.handle = handle;
     
     if (evdi_state.handle == EVDI_INVALID_HANDLE) {
-      BOOST_LOG(error) << "EVDI: Failed to open/create EVDI device"sv;
-      BOOST_LOG(error) << "EVDI: evdi_open_attached_to() returned EVDI_INVALID_HANDLE"sv;
-      BOOST_LOG(debug) << "EVDI: Check 'lsmod | grep evdi' to verify kernel module is loaded"sv;
-      BOOST_LOG(debug) << "EVDI: Check 'dmesg | grep evdi' for kernel error messages"sv;
+      BOOST_LOG(error) << "EVDI: Failed to open EVDI device at index "sv << found_device_index;
+      BOOST_LOG(error) << "EVDI: evdi_open() returned EVDI_INVALID_HANDLE"sv;
+      BOOST_LOG(debug) << "EVDI: Check device permissions: ls -la /dev/dri/card"sv << found_device_index;
+      BOOST_LOG(debug) << "EVDI: Check kernel logs: dmesg | grep evdi"sv;
       return false;
     }
     
