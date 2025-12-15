@@ -203,7 +203,25 @@ namespace platf {
       return false;
     }
     
-    BOOST_LOG(debug) << "EVDI: Kernel module sysfs interface found - proceeding with device creation"sv;
+    // Check if we have write permissions to /sys/devices/evdi/add
+    // The EVDI library needs to write to this file to create new devices
+    if (access("/sys/devices/evdi/add", W_OK) != 0) {
+      BOOST_LOG(error) << "EVDI: No write permission for /sys/devices/evdi/add"sv;
+      BOOST_LOG(error) << "EVDI: Creating virtual displays requires write access to the EVDI sysfs interface"sv;
+      BOOST_LOG(error) << "EVDI: Solution: Grant write permission to /sys/devices/evdi/add"sv;
+      BOOST_LOG(info) << "EVDI: Add udev rule to grant access without requiring root:"sv;
+      BOOST_LOG(info) << "EVDI:   sudo tee /etc/udev/rules.d/99-evdi.rules > /dev/null << 'EOF'"sv;
+      BOOST_LOG(info) << "EVDI:   KERNEL==\"card[0-9]*\", SUBSYSTEM==\"drm\", DRIVERS==\"evdi\", MODE=\"0666\""sv;
+      BOOST_LOG(info) << "EVDI:   SUBSYSTEM==\"evdi\", MODE=\"0666\""sv;
+      BOOST_LOG(info) << "EVDI:   EOF"sv;
+      BOOST_LOG(info) << "EVDI:   sudo udevadm control --reload-rules && sudo udevadm trigger"sv;
+      BOOST_LOG(debug) << "EVDI: Current permissions: "sv;
+      BOOST_LOG(debug) << "EVDI:   ls -la /sys/devices/evdi/add"sv;
+      BOOST_LOG(debug) << "EVDI:   id -u (current user: "sv << getuid() << ", groups: "sv << getgid() << ")"sv;
+      return false;
+    }
+    
+    BOOST_LOG(debug) << "EVDI: Kernel module sysfs interface found with write permissions - proceeding with device creation"sv;
 
     // Use evdi_open_attached_to(NULL) which will:
     // 1. Find an unused EVDI device, or
@@ -262,7 +280,22 @@ namespace platf {
 
     // Connect the display with the EDID
     BOOST_LOG(debug) << "EVDI: Calling evdi_connect() with "sv << edid.size() << " byte EDID"sv;
-    evdi_connect(evdi_state.handle, edid.data(), edid.size(), 0);
+    try {
+      evdi_connect(evdi_state.handle, edid.data(), edid.size(), 0);
+      BOOST_LOG(debug) << "EVDI: evdi_connect() completed successfully"sv;
+    }
+    catch (const std::exception &e) {
+      BOOST_LOG(error) << "EVDI: Exception in evdi_connect(): "sv << e.what();
+      evdi_close(evdi_state.handle);
+      evdi_state.handle = EVDI_INVALID_HANDLE;
+      return false;
+    }
+    catch (...) {
+      BOOST_LOG(error) << "EVDI: Unknown exception in evdi_connect()"sv;
+      evdi_close(evdi_state.handle);
+      evdi_state.handle = EVDI_INVALID_HANDLE;
+      return false;
+    }
 
     // Set up event handlers
     BOOST_LOG(debug) << "EVDI: Setting up event handlers"sv;
@@ -275,7 +308,24 @@ namespace platf {
 
     // Process initial events
     BOOST_LOG(debug) << "EVDI: Processing initial events"sv;
-    evdi_handle_events(evdi_state.handle, &event_context);
+    try {
+      evdi_handle_events(evdi_state.handle, &event_context);
+      BOOST_LOG(debug) << "EVDI: Initial events processed successfully"sv;
+    }
+    catch (const std::exception &e) {
+      BOOST_LOG(error) << "EVDI: Exception in evdi_handle_events(): "sv << e.what();
+      evdi_disconnect(evdi_state.handle);
+      evdi_close(evdi_state.handle);
+      evdi_state.handle = EVDI_INVALID_HANDLE;
+      return false;
+    }
+    catch (...) {
+      BOOST_LOG(error) << "EVDI: Unknown exception in evdi_handle_events()"sv;
+      evdi_disconnect(evdi_state.handle);
+      evdi_close(evdi_state.handle);
+      evdi_state.handle = EVDI_INVALID_HANDLE;
+      return false;
+    }
 
     evdi_state.is_active = true;
 
@@ -296,8 +346,17 @@ namespace platf {
 
     if (evdi_state.handle != EVDI_INVALID_HANDLE) {
       BOOST_LOG(debug) << "EVDI: Disconnecting and closing device handle"sv;
-      evdi_disconnect(evdi_state.handle);
-      evdi_close(evdi_state.handle);
+      try {
+        evdi_disconnect(evdi_state.handle);
+        evdi_close(evdi_state.handle);
+        BOOST_LOG(debug) << "EVDI: Device disconnected and closed successfully"sv;
+      }
+      catch (const std::exception &e) {
+        BOOST_LOG(warning) << "EVDI: Exception during cleanup: "sv << e.what();
+      }
+      catch (...) {
+        BOOST_LOG(warning) << "EVDI: Unknown exception during cleanup"sv;
+      }
       evdi_state.handle = EVDI_INVALID_HANDLE;
     }
 
