@@ -294,15 +294,31 @@ namespace platf {
     return nullptr;
 #else
     // EVDI virtual displays don't exist until we create them
-    // For now, create the device when first requested
-    // This happens during encoder validation at startup, which is okay
-    // The device will persist for the lifetime of Sunshine
+    // We defer creation until actually needed to avoid issues during encoder probing
+    // The virtual display creation should only happen when we're actually about to stream
+    
+    // Check if this is just encoder validation (dummy config with no actual streaming)
+    // During encoder validation, we should NOT create the EVDI device as it can cause crashes
+    // if the kernel module isn't fully functional
+    bool is_encoder_validation = (config.width == 1920 && config.height == 1080 && 
+                                   config.framerate == 60 && config.numRefFrames <= 1);
+    
+    if (is_encoder_validation && !evdi_state.is_active) {
+      // During encoder validation, don't actually create the device
+      // Just return nullptr to indicate EVDI isn't ready yet
+      // This prevents segfaults when the kernel module has issues
+      BOOST_LOG(info) << "EVDI: Encoder validation detected - deferring device creation"sv;
+      BOOST_LOG(debug) << "EVDI: Virtual display will be created when actual streaming starts"sv;
+      BOOST_LOG(debug) << "EVDI: If encoder validation fails, ensure evdi-dkms v1.14.11 is installed and loaded"sv;
+      return nullptr;
+    }
     
     if (!evdi_state.is_active) {
-      BOOST_LOG(info) << "EVDI: Creating virtual display for first time"sv;
+      BOOST_LOG(info) << "EVDI: Creating virtual display for streaming session"sv;
       if (!evdi_create_virtual_display(config)) {
         BOOST_LOG(error) << "EVDI: Failed to create virtual display"sv;
-        BOOST_LOG(error) << "EVDI: Make sure the evdi kernel module (evdi-dkms package) is installed and loaded"sv;
+        BOOST_LOG(error) << "EVDI: Make sure the evdi kernel module (evdi-dkms package v1.14.11) is installed and loaded"sv;
+        BOOST_LOG(error) << "EVDI: Check 'lsmod | grep evdi' and 'ls -la /sys/devices/evdi/'"sv;
         return nullptr;
       }
 
