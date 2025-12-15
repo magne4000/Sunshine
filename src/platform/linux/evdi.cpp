@@ -32,7 +32,6 @@ namespace platf {
       int height = 1080;
       int refresh_rate = 60;
       bool hdr_enabled = false;
-      bool allow_device_creation = false;  // Set to true when ready for actual streaming
     };
 
     evdi_state_t evdi_state;
@@ -174,7 +173,7 @@ namespace platf {
     return evdi_state.is_active;
   }
 
-  bool evdi_create_virtual_display(const video::config_t &config) {
+  bool evdi_prepare_stream(const video::config_t &config) {
     if (evdi_state.is_active) {
       BOOST_LOG(warning) << "EVDI virtual display already active"sv;
       return true;
@@ -303,60 +302,28 @@ namespace platf {
     }
 
     evdi_state.is_active = false;
-    evdi_state.allow_device_creation = false;  // Reset flag when destroying
 
     BOOST_LOG(info) << "EVDI: Virtual display destroyed"sv;
   }
 
-  void evdi_enable_device_creation() {
-    BOOST_LOG(debug) << "EVDI: Device creation enabled - ready for streaming"sv;
-    evdi_state.allow_device_creation = true;
-  }
-
   std::shared_ptr<display_t> evdi_display(mem_type_e hwdevice_type, const std::string &display_name, const video::config_t &config) {
     BOOST_LOG(debug) << "EVDI: evdi_display() called - hwdevice_type="sv << (int)hwdevice_type 
-                     << ", display_name='"sv << display_name << "', is_active="sv << evdi_state.is_active 
-                     << ", allow_device_creation="sv << evdi_state.allow_device_creation;
-    BOOST_LOG(debug) << "EVDI: Client config: "sv << config.width << "x"sv << config.height 
-                     << "@"sv << config.framerate << "Hz, dynamicRange="sv << config.dynamicRange;
+                     << ", display_name='"sv << display_name << "', is_active="sv << evdi_state.is_active;
     
 #ifndef SUNSHINE_BUILD_DRM
     BOOST_LOG(error) << "EVDI: EVDI requires KMS/DRM support to be enabled"sv;
     return nullptr;
 #else
-    // EVDI virtual displays are created on-demand when streaming starts
-    // The allow_device_creation flag ensures we only create devices during actual streaming,
-    // not during encoder validation at startup
+    // EVDI virtual display must be explicitly created via evdi_prepare_stream() before calling this
+    // During encoder validation at startup, we don't have a display yet - return nullptr gracefully
     
-    if (!evdi_state.allow_device_creation && !evdi_state.is_active) {
-      // During encoder validation, we don't have a display yet
-      // This is expected and normal - encoder validation now handles this gracefully
-      BOOST_LOG(debug) << "EVDI: Device creation not enabled yet - encoder validation will use defaults"sv;
+    if (!evdi_state.is_active) {
+      // This is expected during encoder validation - encoder will use default capabilities
+      BOOST_LOG(debug) << "EVDI: Virtual display not yet created - call evdi_prepare_stream() before streaming"sv;
       return nullptr;
     }
     
-    // Create the EVDI virtual display if not already active
-    if (!evdi_state.is_active) {
-      BOOST_LOG(info) << "EVDI: Creating virtual display for streaming session"sv;
-      BOOST_LOG(info) << "EVDI: Display will match client requirements: "sv << config.width << "x"sv << config.height 
-                      << "@"sv << config.framerate << "Hz, HDR="sv << (config.dynamicRange > 0);
-      
-      if (!evdi_create_virtual_display(config)) {
-        BOOST_LOG(error) << "EVDI: Failed to create virtual display"sv;
-        BOOST_LOG(error) << "EVDI: Make sure the evdi kernel module (evdi-dkms package v1.14.11) is installed and loaded"sv;
-        BOOST_LOG(error) << "EVDI: Check 'lsmod | grep evdi' and 'ls -la /sys/devices/evdi/'"sv;
-        return nullptr;
-      }
-
-      // Wait for the system to recognize the new display
-      // The DRM/KMS subsystem needs time to detect the new card
-      BOOST_LOG(debug) << "EVDI: Waiting 500ms for KMS to detect new display"sv;
-      std::this_thread::sleep_for(std::chrono::milliseconds(500));
-      BOOST_LOG(debug) << "EVDI: Wait complete, proceeding to use KMS for capture"sv;
-    }
-    else {
-      BOOST_LOG(debug) << "EVDI: Virtual display already active, reusing existing device"sv;
-    }
+    BOOST_LOG(debug) << "EVDI: Using active virtual display"sv;
 
     // Use KMS capture to grab from the virtual display
     // The virtual display should now appear as a DRM device that can be captured

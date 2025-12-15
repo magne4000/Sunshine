@@ -40,21 +40,16 @@ namespace platf {
   bool evdi_is_active();
 
   /**
-   * @brief Create a virtual display device when streaming starts.
-   * @param config The video configuration from the client.
+   * @brief Prepare and create EVDI virtual display for streaming session.
+   * This should be called explicitly when streaming is about to start.
+   * @param config The video configuration from the client (resolution, framerate, HDR).
    * @return true if successful, false otherwise.
    */
-  bool evdi_create_virtual_display(const video::config_t &config);
+  bool evdi_prepare_stream(const video::config_t &config);
 
   /**
    * @brief Destroy the virtual display device when streaming stops.
    */
   void evdi_destroy_virtual_display();
-
-  /**
-   * @brief Enable EVDI device creation (call before actual streaming starts).
-   * This prevents device creation during encoder validation at startup.
-   */
-  void evdi_enable_device_creation();
 
 }  // namespace platf

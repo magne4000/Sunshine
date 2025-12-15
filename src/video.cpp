@@ -2115,12 +2115,6 @@ namespace video {
   ) {
     auto &encoder = *chosen_encoder;
 
-#ifdef SUNSHINE_BUILD_EVDI
-    // Enable EVDI device creation now that we're in an actual streaming session
-    // This prevents device creation during encoder validation at startup
-    platf::evdi_enable_device_creation();
-#endif
-
     std::shared_ptr<platf::display_t> disp;
 
     auto switch_display_event = mail::man->event<int>(mail::switch_display);
@@ -2133,6 +2127,28 @@ namespace video {
 
       synced_session_ctxs.emplace_back(std::make_unique<sync_session_ctx_t>(std::move(*ctx)));
     }
+
+#ifdef SUNSHINE_BUILD_EVDI
+    // Explicitly prepare EVDI virtual display for streaming if EVDI is selected
+    // This creates the virtual display with the client's requested configuration
+    // before we attempt to use it for capture
+    if (platf::evdi_is_active() || config::video.capture == "evdi") {
+      BOOST_LOG(info) << "EVDI: Preparing virtual display for streaming session"sv;
+      BOOST_LOG(debug) << "EVDI: Client config: "sv << synced_session_ctxs.front()->config.width << "x"sv 
+                       << synced_session_ctxs.front()->config.height << "@"sv 
+                       << synced_session_ctxs.front()->config.framerate << "Hz, HDR="sv 
+                       << (synced_session_ctxs.front()->config.dynamicRange > 0);
+      
+      if (!platf::evdi_prepare_stream(synced_session_ctxs.front()->config)) {
+        BOOST_LOG(error) << "EVDI: Failed to prepare virtual display - streaming cannot start"sv;
+        return encode_e::error;
+      }
+      
+      // Wait for the system to recognize the new display
+      BOOST_LOG(debug) << "EVDI: Waiting 500ms for KMS to detect new display"sv;
+      std::this_thread::sleep_for(std::chrono::milliseconds(500));
+    }
+#endif
 
     while (encode_session_ctx_queue.running()) {
       // Refresh display names since a display removal might have caused the reinitialization
