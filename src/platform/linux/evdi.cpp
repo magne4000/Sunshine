@@ -135,6 +135,60 @@ namespace platf {
     }
 
     /**
+     * @brief Generate CTA-861 extension block with HDR metadata.
+     */
+    std::vector<unsigned char> generate_cta861_hdr_extension() {
+      std::vector<unsigned char> ext(128, 0);
+      
+      // CTA Extension Header
+      ext[0] = 0x02;  // CTA-861 Extension Tag
+      ext[1] = 0x03;  // Revision 3
+      ext[2] = 0x00;  // No detailed timing descriptors
+      ext[3] = 0x00;  // No flags
+      
+      // Data Block Collection starts at byte 4
+      int offset = 4;
+      
+      // Video Data Block (VDB) - indicate support for common video formats
+      ext[offset++] = 0x40 | 0x03;  // Video Data Block, length 3
+      ext[offset++] = 0x10;  // VIC 16: 1080p60
+      ext[offset++] = 0x5F;  // VIC 95: 3840x2160p30
+      ext[offset++] = 0x61;  // VIC 97: 3840x2160p60
+      
+      // HDR Static Metadata Data Block
+      ext[offset++] = 0x60 | 0x06;  // Extended tag, length 6
+      ext[offset++] = 0x06;  // Extended tag code for HDR Static Metadata
+      ext[offset++] = 0x03;  // ET: 0 (SDR), 1 (HDR10), 2 (HLG) - support bits 0 and 1
+      ext[offset++] = 0x00;  // Static Metadata Descriptor Type 1
+      // Max Luminance Data: 100 nits = 50 (encoded as 50 + 50 = 100 cd/m²)
+      ext[offset++] = 0x64;  // Desired content max luminance (100 cd/m²)
+      ext[offset++] = 0x5A;  // Desired content max frame-average luminance (90 cd/m²)
+      ext[offset++] = 0x00;  // Desired content min luminance (0.0001 cd/m²)
+      
+      // Colorimetry Data Block
+      ext[offset++] = 0x70 | 0x02;  // Extended tag, length 2
+      ext[offset++] = 0x05;  // Extended tag code for Colorimetry
+      ext[offset++] = 0xC0;  // BT2020 RGB and BT2020 YCC support
+      
+      // Set DTD offset (no DTDs in this extension)
+      ext[2] = offset;
+      
+      // Padding to 127 bytes
+      while (offset < 127) {
+        ext[offset++] = 0x00;
+      }
+      
+      // Calculate checksum
+      unsigned char checksum = 0;
+      for (int i = 0; i < 127; i++) {
+        checksum += ext[i];
+      }
+      ext[127] = (256 - checksum) & 0xFF;
+      
+      return ext;
+    }
+
+    /**
      * @brief Generate an EDID based on the requested display mode.
      * @param width Display width in pixels
      * @param height Display height in pixels
@@ -145,6 +199,17 @@ namespace platf {
     std::vector<unsigned char> generate_edid(int width, int height, int refresh_rate, bool hdr_enabled) {
       std::vector<unsigned char> edid(base_edid, base_edid + sizeof(base_edid));
 
+      // Update color depth for HDR (10-bit vs 8-bit)
+      // Byte 20: Video input definition
+      // Bits 6-4 define color bit depth: 101b = 10 bits per color, 100b = 8 bits per color
+      if (hdr_enabled) {
+        edid[20] = 0xB5;  // Digital input, 10 bits per color (bits 6-4 = 101b)
+        BOOST_LOG(debug) << "EVDI: Set color depth to 10-bit for HDR"sv;
+      }
+      else {
+        edid[20] = 0xA5;  // Digital input, 8 bits per color (bits 6-4 = 100b)
+      }
+
       // Generate custom DTD (Detailed Timing Descriptor) for the requested resolution
       // DTD is located at bytes 54-71 (first descriptor block)
       generate_dtd(&edid[54], width, height, refresh_rate);
@@ -152,19 +217,36 @@ namespace platf {
       BOOST_LOG(debug) << "EVDI: Generated custom EDID with DTD for "sv << width << "x"sv << height 
                        << "@"sv << refresh_rate << "Hz"sv;
 
-      // TODO: Add HDR metadata extension blocks when hdr_enabled is true
-      // This would require adding a CTA-861 extension block with HDR static metadata
+      // Add HDR metadata extension block when HDR is enabled
       if (hdr_enabled) {
-        BOOST_LOG(debug) << "EVDI: HDR requested but HDR EDID extension not yet implemented"sv;
+        BOOST_LOG(debug) << "EVDI: Generating CTA-861 extension block with HDR static metadata"sv;
+        
+        // Set extension flag in base EDID (byte 126)
+        edid[126] = 0x01;  // 1 extension block follows
+        
+        // Recalculate base EDID checksum
+        unsigned char base_checksum = 0;
+        for (size_t i = 0; i < 127; i++) {
+          base_checksum += edid[i];
+        }
+        edid[127] = (256 - base_checksum) & 0xFF;
+        
+        // Append CTA-861 extension
+        auto cta_ext = generate_cta861_hdr_extension();
+        edid.insert(edid.end(), cta_ext.begin(), cta_ext.end());
+        
+        BOOST_LOG(info) << "EVDI: HDR10 support enabled in EDID (BT.2020, 10-bit color)"sv;
+      }
+      else {
+        // Calculate and update checksum for base EDID only
+        unsigned char checksum = 0;
+        for (size_t i = 0; i < edid.size() - 1; i++) {
+          checksum += edid[i];
+        }
+        edid[edid.size() - 1] = (256 - checksum) & 0xFF;
       }
 
-      // Calculate and update checksum
-      unsigned char checksum = 0;
-      for (size_t i = 0; i < edid.size() - 1; i++) {
-        checksum += edid[i];
-      }
-      edid[edid.size() - 1] = (256 - checksum) & 0xFF;
-
+      BOOST_LOG(debug) << "EVDI: Generated EDID size: "sv << edid.size() << " bytes"sv;
       return edid;
     }
 
