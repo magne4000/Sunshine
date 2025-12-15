@@ -317,6 +317,8 @@ namespace platf {
     BOOST_LOG(debug) << "EVDI: evdi_display() called - hwdevice_type="sv << (int)hwdevice_type 
                      << ", display_name='"sv << display_name << "', is_active="sv << evdi_state.is_active 
                      << ", allow_device_creation="sv << evdi_state.allow_device_creation;
+    BOOST_LOG(debug) << "EVDI: Client config: "sv << config.width << "x"sv << config.height 
+                     << "@"sv << config.framerate << "Hz, dynamicRange="sv << config.dynamicRange;
     
 #ifndef SUNSHINE_BUILD_DRM
     BOOST_LOG(error) << "EVDI: EVDI requires KMS/DRM support to be enabled"sv;
@@ -333,8 +335,12 @@ namespace platf {
       return nullptr;
     }
     
+    // Create the EVDI virtual display if not already active
     if (!evdi_state.is_active) {
       BOOST_LOG(info) << "EVDI: Creating virtual display for streaming session"sv;
+      BOOST_LOG(info) << "EVDI: Display will match client requirements: "sv << config.width << "x"sv << config.height 
+                      << "@"sv << config.framerate << "Hz, HDR="sv << (config.dynamicRange > 0);
+      
       if (!evdi_create_virtual_display(config)) {
         BOOST_LOG(error) << "EVDI: Failed to create virtual display"sv;
         BOOST_LOG(error) << "EVDI: Make sure the evdi kernel module (evdi-dkms package v1.14.11) is installed and loaded"sv;
@@ -349,7 +355,7 @@ namespace platf {
       BOOST_LOG(debug) << "EVDI: Wait complete, proceeding to use KMS for capture"sv;
     }
     else {
-      BOOST_LOG(debug) << "EVDI: Reusing existing virtual display"sv;
+      BOOST_LOG(debug) << "EVDI: Virtual display already active, reusing existing device"sv;
     }
 
     // Use KMS capture to grab from the virtual display
