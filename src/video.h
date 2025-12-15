@@ -345,6 +345,17 @@ namespace video {
   bool validate_encoder(encoder_t &encoder, bool expect_failure);
 
   /**
+   * @brief Refine encoder capabilities with actual display.
+   * Called after virtual displays are created to update encoder capabilities
+   * based on the actual display (HDR support, YUV444, etc.).
+   * @param encoder The encoder to refine.
+   * @param disp The display to validate against.
+   * @param config The video configuration from the client.
+   * @return true if refinement succeeded, false otherwise.
+   */
+  bool refine_encoder_capabilities(encoder_t &encoder, platf::display_t *disp, const config_t &config);
+
+  /**
    * @brief Probe encoders and select the preferred encoder.
    * This is called once at startup and each time a stream is launched to
    * ensure the best encoder is selected. Encoder availability can change

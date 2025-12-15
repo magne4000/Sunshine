@@ -2113,7 +2113,7 @@ namespace video {
     std::vector<std::string> &display_names,
     int &display_p
   ) {
-    const auto &encoder = *chosen_encoder;
+    auto &encoder = *chosen_encoder;
 
 #ifdef SUNSHINE_BUILD_EVDI
     // Enable EVDI device creation now that we're in an actual streaming session
@@ -2152,6 +2152,14 @@ namespace video {
 
     if (!disp) {
       return encode_e::error;
+    }
+
+    // Now that we have an actual display (potentially a virtual one that was just created),
+    // refine encoder capabilities based on the display's actual capabilities
+    // This is Phase 2 of the two-phase encoder detection system
+    if (!refine_encoder_capabilities(encoder, disp.get(), synced_session_ctxs.front()->config)) {
+      BOOST_LOG(warning) << "Failed to refine encoder capabilities with display - using default capabilities"sv;
+      // Not fatal - we'll use the default capabilities from Phase 1
     }
 
     auto img = disp->alloc_img();
@@ -2493,29 +2501,36 @@ namespace video {
       BOOST_LOG(info) << "Encoder ["sv << encoder.name << "] validation deferred (no display available)"sv;
       BOOST_LOG(debug) << "This is normal for virtual display capture methods like EVDI"sv;
       
-      // For virtual displays, we assume basic codec support and let runtime validation handle the rest
-      encoder.h264[encoder_t::PASSED] = true;
-      encoder.h264[encoder_t::REF_FRAMES_RESTRICT] = true;
-      encoder.h264[encoder_t::VUI_PARAMETERS] = !(config::sunshine.flags[config::flag::FORCE_VIDEO_HEADER_REPLACE]);
-      encoder.h264[encoder_t::DYNAMIC_RANGE] = false;  // No HDR for H.264
-      encoder.h264[encoder_t::YUV444] = (encoder.flags & YUV444_SUPPORT) != 0;
+      // Helper function to set default codec capabilities when display is unavailable
+      // These are conservative assumptions based on typical encoder capabilities
+      // Actual capabilities will be validated at runtime when the display is created
+      auto set_default_codec_caps = [&](encoder_t::codec_t &codec, bool supports_hdr) {
+        codec[encoder_t::PASSED] = true;
+        codec[encoder_t::REF_FRAMES_RESTRICT] = true;
+        codec[encoder_t::VUI_PARAMETERS] = !(config::sunshine.flags[config::flag::FORCE_VIDEO_HEADER_REPLACE]);
+        // HDR support assumptions:
+        // - H.264: Never supports HDR (standard limitation)
+        // - HEVC/AV1: Assumed supported as these codecs have HDR in their specs
+        // - Runtime will verify actual GPU/encoder HDR support when display is available
+        codec[encoder_t::DYNAMIC_RANGE] = supports_hdr;
+        // YUV444 support based on encoder flags
+        // This is a hardware capability that doesn't depend on the display
+        codec[encoder_t::YUV444] = (encoder.flags & YUV444_SUPPORT) != 0;
+      };
       
+      // H.264: Basic support, no HDR (standard limitation)
+      set_default_codec_caps(encoder.h264, false);
+      
+      // HEVC: Assume HDR support if codec is enabled (HEVC Main10 supports HDR)
       if (test_hevc) {
-        encoder.hevc[encoder_t::PASSED] = true;
-        encoder.hevc[encoder_t::REF_FRAMES_RESTRICT] = true;
-        encoder.hevc[encoder_t::VUI_PARAMETERS] = !(config::sunshine.flags[config::flag::FORCE_VIDEO_HEADER_REPLACE]);
-        encoder.hevc[encoder_t::DYNAMIC_RANGE] = true;  // Assume HEVC HDR support
-        encoder.hevc[encoder_t::YUV444] = (encoder.flags & YUV444_SUPPORT) != 0;
+        set_default_codec_caps(encoder.hevc, true);
       } else {
         encoder.hevc.capabilities.reset();
       }
       
+      // AV1: Assume HDR support if codec is enabled (AV1 Main10 supports HDR)
       if (test_av1) {
-        encoder.av1[encoder_t::PASSED] = true;
-        encoder.av1[encoder_t::REF_FRAMES_RESTRICT] = true;
-        encoder.av1[encoder_t::VUI_PARAMETERS] = !(config::sunshine.flags[config::flag::FORCE_VIDEO_HEADER_REPLACE]);
-        encoder.av1[encoder_t::DYNAMIC_RANGE] = true;  // Assume AV1 HDR support
-        encoder.av1[encoder_t::YUV444] = (encoder.flags & YUV444_SUPPORT) != 0;
+        set_default_codec_caps(encoder.av1, true);
       } else {
         encoder.av1.capabilities.reset();
       }
@@ -2677,6 +2692,124 @@ namespace video {
     }
 
     fg.disable();
+    return true;
+  }
+
+  bool refine_encoder_capabilities(encoder_t &encoder, platf::display_t *disp, const config_t &config) {
+    // Phase 2 of encoder validation: Refine capabilities based on actual display
+    // This is called after a display (possibly virtual) has been created
+    // It updates encoder capabilities that depend on the display (HDR, YUV444, etc.)
+    
+    BOOST_LOG(debug) << "Refining encoder capabilities with actual display"sv;
+    BOOST_LOG(debug) << "Display: "sv << disp->width << "x"sv << disp->height 
+                     << ", HDR: "sv << (disp->is_hdr() ? "yes" : "no");
+    
+    // If encoder was already fully validated (during startup with a physical display),
+    // we don't need to refine capabilities
+    // Check if this looks like a default/deferred validation by examining if all codecs
+    // have identical capability patterns (which wouldn't happen with real validation)
+    bool needs_refinement = (
+      encoder.h264[encoder_t::PASSED] && 
+      encoder.hevc[encoder_t::PASSED] && 
+      encoder.h264[encoder_t::REF_FRAMES_RESTRICT] &&
+      encoder.hevc[encoder_t::REF_FRAMES_RESTRICT] &&
+      !encoder.h264[encoder_t::DYNAMIC_RANGE] &&
+      encoder.hevc[encoder_t::DYNAMIC_RANGE]
+    );
+    
+    if (!needs_refinement) {
+      BOOST_LOG(debug) << "Encoder already has detailed capabilities - skipping refinement"sv;
+      return true;
+    }
+    
+    BOOST_LOG(info) << "Performing Phase 2 encoder validation with actual display"sv;
+    
+    // Test actual HDR support with the display
+    // Only test if the display reports HDR capability
+    if (disp->is_hdr()) {
+      BOOST_LOG(debug) << "Display supports HDR - validating HDR encoding capabilities"sv;
+      
+      // Create HDR test config
+      config_t hdr_config = config;
+      hdr_config.dynamicRange = 1;  // Request HDR
+      hdr_config.chromaSamplingType = 0;  // 4:2:0 first
+      
+      // Test HEVC HDR if codec is enabled
+      if (encoder.hevc[encoder_t::PASSED]) {
+        hdr_config.videoFormat = 1;  // HEVC
+        if (disp->is_codec_supported(encoder.hevc.name, hdr_config)) {
+          // Create a temporary shared_ptr for validation
+          std::shared_ptr<platf::display_t> disp_ptr(disp, [](platf::display_t*){});
+          auto result = validate_config(disp_ptr, encoder, hdr_config);
+          encoder.hevc[encoder_t::DYNAMIC_RANGE] = (result >= 0);
+          BOOST_LOG(debug) << "HEVC HDR 4:2:0: "sv << (result >= 0 ? "supported" : "not supported");
+          
+          // Test YUV444 HDR if encoder supports it
+          if ((encoder.flags & YUV444_SUPPORT) && result >= 0) {
+            hdr_config.chromaSamplingType = 1;  // 4:4:4
+            result = validate_config(disp_ptr, encoder, hdr_config);
+            if (result >= 0) {
+              encoder.hevc[encoder_t::YUV444] = true;
+              BOOST_LOG(debug) << "HEVC HDR 4:4:4: supported"sv;
+            } else {
+              BOOST_LOG(debug) << "HEVC HDR 4:4:4: not supported"sv;
+            }
+          }
+        } else {
+          encoder.hevc[encoder_t::DYNAMIC_RANGE] = false;
+          BOOST_LOG(debug) << "HEVC HDR not supported by codec"sv;
+        }
+      }
+      
+      // Test AV1 HDR if codec is enabled
+      if (encoder.av1[encoder_t::PASSED]) {
+        hdr_config.videoFormat = 2;  // AV1
+        hdr_config.chromaSamplingType = 0;  // 4:2:0
+        if (disp->is_codec_supported(encoder.av1.name, hdr_config)) {
+          std::shared_ptr<platf::display_t> disp_ptr(disp, [](platf::display_t*){});
+          auto result = validate_config(disp_ptr, encoder, hdr_config);
+          encoder.av1[encoder_t::DYNAMIC_RANGE] = (result >= 0);
+          BOOST_LOG(debug) << "AV1 HDR 4:2:0: "sv << (result >= 0 ? "supported" : "not supported");
+          
+          // Test YUV444 HDR if encoder supports it
+          if ((encoder.flags & YUV444_SUPPORT) && result >= 0) {
+            hdr_config.chromaSamplingType = 1;  // 4:4:4
+            result = validate_config(disp_ptr, encoder, hdr_config);
+            if (result >= 0) {
+              encoder.av1[encoder_t::YUV444] = true;
+              BOOST_LOG(debug) << "AV1 HDR 4:4:4: supported"sv;
+            } else {
+              BOOST_LOG(debug) << "AV1 HDR 4:4:4: not supported"sv;
+            }
+          }
+        } else {
+          encoder.av1[encoder_t::DYNAMIC_RANGE] = false;
+          BOOST_LOG(debug) << "AV1 HDR not supported by codec"sv;
+        }
+      }
+    } else {
+      BOOST_LOG(debug) << "Display does not support HDR - keeping default HDR capabilities"sv;
+    }
+    
+    // Test SDR YUV444 support for H.264 if encoder supports it
+    if ((encoder.flags & YUV444_SUPPORT) && encoder.h264[encoder_t::PASSED]) {
+      config_t yuv444_config = config;
+      yuv444_config.videoFormat = 0;  // H.264
+      yuv444_config.chromaSamplingType = 1;  // 4:4:4
+      yuv444_config.dynamicRange = 0;  // SDR
+      
+      if (disp->is_codec_supported(encoder.h264.name, yuv444_config)) {
+        std::shared_ptr<platf::display_t> disp_ptr(disp, [](platf::display_t*){});
+        auto result = validate_config(disp_ptr, encoder, yuv444_config);
+        encoder.h264[encoder_t::YUV444] = (result >= 0);
+        BOOST_LOG(debug) << "H.264 SDR 4:4:4: "sv << (result >= 0 ? "supported" : "not supported");
+      } else {
+        encoder.h264[encoder_t::YUV444] = false;
+        BOOST_LOG(debug) << "H.264 4:4:4 not supported by codec"sv;
+      }
+    }
+    
+    BOOST_LOG(info) << "Phase 2 encoder validation complete"sv;
     return true;
   }
 
