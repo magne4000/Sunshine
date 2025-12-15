@@ -183,12 +183,33 @@ namespace platf {
     BOOST_LOG(debug) << "EVDI: Requested display config: "sv << config.width << "x"sv << config.height 
                      << "@"sv << config.framerate << "Hz, dynamicRange="sv << config.dynamicRange;
 
+    // Check if the EVDI kernel module is properly loaded by checking for sysfs interface
+    // The evdi module creates /sys/devices/evdi/add when properly loaded
+    BOOST_LOG(debug) << "EVDI: Checking if kernel module is properly loaded..."sv;
+    if (access("/sys/devices/evdi", F_OK) != 0) {
+      BOOST_LOG(error) << "EVDI: /sys/devices/evdi does not exist"sv;
+      BOOST_LOG(error) << "EVDI: The evdi kernel module is either not loaded or failed to initialize"sv;
+      BOOST_LOG(error) << "EVDI: Install evdi-dkms package (v1.14.11) and run: sudo modprobe evdi"sv;
+      BOOST_LOG(debug) << "EVDI: After loading, verify with: ls -la /sys/devices/evdi/"sv;
+      BOOST_LOG(debug) << "EVDI: Check kernel logs with: dmesg | grep evdi"sv;
+      return false;
+    }
+    
+    if (access("/sys/devices/evdi/add", F_OK) != 0) {
+      BOOST_LOG(error) << "EVDI: /sys/devices/evdi/add does not exist"sv;
+      BOOST_LOG(error) << "EVDI: The evdi kernel module loaded but sysfs interface is incomplete"sv;
+      BOOST_LOG(error) << "EVDI: Try unloading and reloading: sudo modprobe -r evdi && sudo modprobe evdi"sv;
+      BOOST_LOG(debug) << "EVDI: Check kernel logs for errors: dmesg | tail -50 | grep evdi"sv;
+      return false;
+    }
+    
+    BOOST_LOG(debug) << "EVDI: Kernel module sysfs interface found - proceeding with device creation"sv;
+
     // Use evdi_open_attached_to(NULL) which will:
     // 1. Find an unused EVDI device, or
-    // 2. Add a new device and then open it
+    // 2. Add a new device by writing to /sys/devices/evdi/add and then open it
     // This is the proper way to create/open an EVDI device
-    BOOST_LOG(debug) << "EVDI: About to call evdi_open_attached_to(NULL) to create/open device"sv;
-    BOOST_LOG(debug) << "EVDI: If crash occurs, this indicates libevdi/kernel module compatibility issue"sv;
+    BOOST_LOG(debug) << "EVDI: Calling evdi_open_attached_to(NULL) to create/open device"sv;
     
     evdi_handle handle = EVDI_INVALID_HANDLE;
     try {
@@ -210,9 +231,9 @@ namespace platf {
     
     if (evdi_state.handle == EVDI_INVALID_HANDLE) {
       BOOST_LOG(error) << "EVDI: Failed to open/create EVDI device"sv;
-      BOOST_LOG(error) << "EVDI: Make sure the evdi kernel module is loaded (install evdi-dkms package and run 'sudo modprobe evdi')"sv;
+      BOOST_LOG(error) << "EVDI: evdi_open_attached_to() returned EVDI_INVALID_HANDLE"sv;
       BOOST_LOG(debug) << "EVDI: Check 'lsmod | grep evdi' to verify kernel module is loaded"sv;
-      BOOST_LOG(debug) << "EVDI: Check 'ls -la /sys/devices/evdi/' to verify evdi sysfs is available"sv;
+      BOOST_LOG(debug) << "EVDI: Check 'dmesg | grep evdi' for kernel error messages"sv;
       return false;
     }
     
