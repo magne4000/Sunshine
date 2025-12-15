@@ -74,9 +74,9 @@ jobs:
           mkdir -p /home/builder/evdi-build
           chown -R builder:builder /home/builder/evdi-build
           
-          # Clone evdi from official DisplayLink repository
+          # Clone evdi from official DisplayLink repository at tag v1.14.11
           cd /home/builder/evdi-build
-          sudo -u builder git clone https://github.com/DisplayLink/evdi.git
+          sudo -u builder git clone --depth 1 --branch v1.14.11 https://github.com/DisplayLink/evdi.git
           cd evdi/library
           
           # Build the library as builder user
@@ -110,7 +110,7 @@ jobs:
           
           Name: evdi
           Description: Extensible Virtual Display Interface
-          Version: 1.14.7
+          Version: 1.14.11
           Libs: -L${libdir} -levdi
           Cflags: -I${includedir}
           EVDI_PC_EOF
