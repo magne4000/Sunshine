@@ -77,6 +77,64 @@ namespace platf {
     };
 
     /**
+     * @brief Generate a DTD (Detailed Timing Descriptor) for the given resolution.
+     * Uses CVT (Coordinated Video Timings) reduced blanking formulas.
+     */
+    void generate_dtd(unsigned char *dtd, int width, int height, int refresh_rate) {
+      // CVT reduced blanking timing calculations
+      // These are simplified values - proper CVT would calculate exact timings
+      
+      // For common resolutions, use standard timings
+      // Otherwise, use approximate values based on CVT reduced blanking
+      
+      int h_blank = width / 5;  // Approximate horizontal blanking
+      int v_blank = 30;         // Vertical blanking lines
+      int h_sync = 32;          // H-sync pulse width
+      int v_sync = 4;           // V-sync pulse width
+      
+      int pixel_clock_khz = ((width + h_blank) * (height + v_blank) * refresh_rate) / 1000;
+      
+      // DTD structure (18 bytes):
+      // Bytes 0-1: Pixel clock in 10 kHz units (little endian)
+      dtd[0] = (pixel_clock_khz / 10) & 0xFF;
+      dtd[1] = ((pixel_clock_khz / 10) >> 8) & 0xFF;
+      
+      // Bytes 2-3: Horizontal addressable pixels and blanking
+      dtd[2] = width & 0xFF;
+      dtd[3] = h_blank & 0xFF;
+      dtd[4] = ((width >> 8) & 0x0F) | (((h_blank >> 8) & 0x0F) << 4);
+      
+      // Bytes 5-6: Vertical addressable lines and blanking
+      dtd[5] = height & 0xFF;
+      dtd[6] = v_blank & 0xFF;
+      dtd[7] = ((height >> 8) & 0x0F) | (((v_blank >> 8) & 0x0F) << 4);
+      
+      // Bytes 8-10: Sync pulse parameters
+      int h_sync_offset = (h_blank - h_sync) / 2;
+      int v_sync_offset = 3;
+      
+      dtd[8] = h_sync_offset & 0xFF;
+      dtd[9] = h_sync & 0xFF;
+      dtd[10] = ((v_sync_offset & 0x0F) << 4) | (v_sync & 0x0F);
+      dtd[11] = ((h_sync_offset >> 8) & 0x03) | 
+                (((h_sync >> 8) & 0x03) << 2) |
+                (((v_sync_offset >> 4) & 0x03) << 4) |
+                (((v_sync >> 4) & 0x03) << 6);
+      
+      // Bytes 12-13: Image size (52cm x 32cm - approximate 24" 16:9 display)
+      dtd[12] = 0x20;
+      dtd[13] = 0x34;
+      dtd[14] = 0x00;
+      
+      // Bytes 15-16: Border and flags
+      dtd[15] = 0x00;  // No border
+      dtd[16] = 0x00;  // No border
+      
+      // Byte 17: Flags (digital separate sync, positive polarity)
+      dtd[17] = 0x1E;
+    }
+
+    /**
      * @brief Generate an EDID based on the requested display mode.
      * @param width Display width in pixels
      * @param height Display height in pixels
@@ -87,11 +145,18 @@ namespace platf {
     std::vector<unsigned char> generate_edid(int width, int height, int refresh_rate, bool hdr_enabled) {
       std::vector<unsigned char> edid(base_edid, base_edid + sizeof(base_edid));
 
-      // TODO: Customize EDID based on width, height, refresh_rate, and hdr_enabled
-      // This would involve updating the descriptor blocks to match the requested mode
-      // For now, the base EDID provides a working 1920x1080@60Hz display
-      // Future enhancement: Generate proper timing descriptors for arbitrary resolutions
-      // and add HDR metadata extension blocks when hdr_enabled is true
+      // Generate custom DTD (Detailed Timing Descriptor) for the requested resolution
+      // DTD is located at bytes 54-71 (first descriptor block)
+      generate_dtd(&edid[54], width, height, refresh_rate);
+      
+      BOOST_LOG(debug) << "EVDI: Generated custom EDID with DTD for "sv << width << "x"sv << height 
+                       << "@"sv << refresh_rate << "Hz"sv;
+
+      // TODO: Add HDR metadata extension blocks when hdr_enabled is true
+      // This would require adding a CTA-861 extension block with HDR static metadata
+      if (hdr_enabled) {
+        BOOST_LOG(debug) << "EVDI: HDR requested but HDR EDID extension not yet implemented"sv;
+      }
 
       // Calculate and update checksum
       unsigned char checksum = 0;
