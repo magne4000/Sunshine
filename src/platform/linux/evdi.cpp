@@ -187,8 +187,26 @@ namespace platf {
     // 1. Find an unused EVDI device, or
     // 2. Add a new device and then open it
     // This is the proper way to create/open an EVDI device
-    BOOST_LOG(debug) << "EVDI: Calling evdi_open_attached_to(NULL) to create/open device"sv;
-    evdi_state.handle = evdi_open_attached_to(NULL);
+    BOOST_LOG(debug) << "EVDI: About to call evdi_open_attached_to(NULL) to create/open device"sv;
+    BOOST_LOG(debug) << "EVDI: If crash occurs, this indicates libevdi/kernel module compatibility issue"sv;
+    
+    evdi_handle handle = EVDI_INVALID_HANDLE;
+    try {
+      handle = evdi_open_attached_to(NULL);
+      BOOST_LOG(debug) << "EVDI: evdi_open_attached_to() returned handle="sv << (void*)handle;
+    }
+    catch (const std::exception &e) {
+      BOOST_LOG(error) << "EVDI: Exception in evdi_open_attached_to(): "sv << e.what();
+      BOOST_LOG(error) << "EVDI: This indicates a problem with the EVDI library or kernel module"sv;
+      return false;
+    }
+    catch (...) {
+      BOOST_LOG(error) << "EVDI: Unknown exception in evdi_open_attached_to()"sv;
+      BOOST_LOG(error) << "EVDI: This indicates a serious problem with the EVDI library or kernel module"sv;
+      return false;
+    }
+    
+    evdi_state.handle = handle;
     
     if (evdi_state.handle == EVDI_INVALID_HANDLE) {
       BOOST_LOG(error) << "EVDI: Failed to open/create EVDI device"sv;
