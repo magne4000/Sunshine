@@ -223,24 +223,51 @@ namespace platf {
     
     BOOST_LOG(debug) << "EVDI: Kernel module sysfs interface found with write permissions - proceeding with device creation"sv;
 
-    // Use evdi_open_attached_to(NULL) which will:
-    // 1. Find an unused EVDI device, or
-    // 2. Add a new device by writing to /sys/devices/evdi/add and then open it
-    // This is the proper way to create/open an EVDI device
-    BOOST_LOG(debug) << "EVDI: Calling evdi_open_attached_to(NULL) to create/open device"sv;
+    // The evdi_open_attached_to(NULL) function is deprecated and has a bug - it calls strlen(NULL)
+    // which causes a segfault. Instead, we use the recommended approach:
+    // 1. Call evdi_add_device() to create a new device (writes "1" to /sys/devices/evdi/add)
+    // 2. The function returns the device index, or -1 on failure
+    // 3. Call evdi_open(device_index) to open the created device
     
-    evdi_handle handle = EVDI_INVALID_HANDLE;
+    BOOST_LOG(debug) << "EVDI: Calling evdi_add_device() to create new virtual display device"sv;
+    
+    int device_index = -1;
     try {
-      handle = evdi_open_attached_to(NULL);
-      BOOST_LOG(debug) << "EVDI: evdi_open_attached_to() returned handle="sv << (void*)handle;
+      device_index = evdi_add_device();
+      BOOST_LOG(debug) << "EVDI: evdi_add_device() returned device_index="sv << device_index;
     }
     catch (const std::exception &e) {
-      BOOST_LOG(error) << "EVDI: Exception in evdi_open_attached_to(): "sv << e.what();
+      BOOST_LOG(error) << "EVDI: Exception in evdi_add_device(): "sv << e.what();
       BOOST_LOG(error) << "EVDI: This indicates a problem with the EVDI library or kernel module"sv;
       return false;
     }
     catch (...) {
-      BOOST_LOG(error) << "EVDI: Unknown exception in evdi_open_attached_to()"sv;
+      BOOST_LOG(error) << "EVDI: Unknown exception in evdi_add_device()"sv;
+      BOOST_LOG(error) << "EVDI: This indicates a serious problem with the EVDI library or kernel module"sv;
+      return false;
+    }
+    
+    if (device_index < 0) {
+      BOOST_LOG(error) << "EVDI: evdi_add_device() failed to create device (returned "sv << device_index << ")"sv;
+      BOOST_LOG(error) << "EVDI: This usually means write permission denied to /sys/devices/evdi/add"sv;
+      BOOST_LOG(info) << "EVDI: Check permissions: ls -la /sys/devices/evdi/add"sv;
+      return false;
+    }
+    
+    BOOST_LOG(debug) << "EVDI: Device created successfully, now opening device "sv << device_index;
+    
+    evdi_handle handle = EVDI_INVALID_HANDLE;
+    try {
+      handle = evdi_open(device_index);
+      BOOST_LOG(debug) << "EVDI: evdi_open() returned handle="sv << (void*)handle;
+    }
+    catch (const std::exception &e) {
+      BOOST_LOG(error) << "EVDI: Exception in evdi_open(): "sv << e.what();
+      BOOST_LOG(error) << "EVDI: This indicates a problem with the EVDI library or kernel module"sv;
+      return false;
+    }
+    catch (...) {
+      BOOST_LOG(error) << "EVDI: Unknown exception in evdi_open()"sv;
       BOOST_LOG(error) << "EVDI: This indicates a serious problem with the EVDI library or kernel module"sv;
       return false;
     }
